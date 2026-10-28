@@ -1,0 +1,9 @@
+B0 benchmark summary
+ELF: build/b0.elf
+Dynamic instructions: 200000
+.text size: 862
+.rodata size: 736
+.data size: 8
+.bss size: 384
+Trace: results/raw/b0.trace
+Disassembly: results/raw/b0.disassembly.txt

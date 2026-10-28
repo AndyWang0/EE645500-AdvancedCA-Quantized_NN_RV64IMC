@@ -2,3 +2,4 @@ rv64imc_quantized_nn_term_project.md
 guide.md
 deliverables_mid.md
 build/
+*.trace
