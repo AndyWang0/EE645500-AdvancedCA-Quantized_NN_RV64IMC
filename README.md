@@ -289,3 +289,82 @@ Dynamic instructions: 200000
 
 This is the baseline trace used to evaluate the scalar kernel before any custom
 `xqmac8` or `xqrequant8` logic is added.
+
+## Step 2.1 — Modify Spike
+
+Spike was modified in its separate source checkout at
+`~/src/riscv-isa-sim`. The requested branch was created before any source
+changes:
+
+```sh
+cd ~/src/riscv-isa-sim
+git switch -c midterm-custom-isa
+```
+
+The branch is based on the existing Spike commit in that checkout. The project
+repository and the Spike repository remain separate so simulator changes do not
+become mixed with the workload sources.
+
+### Spike implementation
+
+The following files implement the project-defined custom instructions:
+
+- `riscv/insns/xqmac8.h`: decodes eight signed INT8 lanes from each 64-bit
+  source register, computes their dot product, and performs the specified
+  modulo-64-bit read-modify-write update of `rd`.
+- `riscv/insns/xqrequant8.h`: extracts the signed multiplier, six-bit shift,
+  and signed INT8 zero point from `rs2`; performs signed 128-bit fixed-point
+  multiplication and ties-away-from-zero rounding; then adds the zero point,
+  saturates to INT8, and sign-extends the result into `rd`.
+- `riscv/encoding.h`: registers the `custom-0` R-type encodings:
+  `xqmac8 = 0x0000000b` with `funct7=0`, and `xqrequant8 = 0x0200000b`
+  with `funct7=1`. Both use mask `0xfe00707f`.
+- `riscv/riscv.mk.in`: includes both instruction implementation files in
+  Spike's generated instruction list.
+
+The implementation requires RV64 for both instructions, matching the design
+contract. Register overlap is naturally supported because source operands are
+read before `WRITE_RD` updates the destination. Unallocated encodings remain
+illegal because only the two registered match/mask pairs are added.
+
+### Rebuild command
+
+```sh
+cd ~/src/riscv-isa-sim
+make -C build -j2
+```
+
+The rebuilt simulator is `~/src/riscv-isa-sim/build/spike`. The build uses the
+existing configured Spike checkout and regenerates the instruction translation
+units from `riscv/riscv.mk.in`. The generated files in `build/` are build
+outputs, not hand-edited source.
+
+### Functional verification
+
+The project repository contains a small bare-metal test:
+
+- [`tests/test_custom_spike.c`](tests/test_custom_spike.c): emits both
+  instructions with GNU assembler `.insn` directives and checks known results.
+- [`scripts/test_custom_spike.sh`](scripts/test_custom_spike.sh): builds the
+  test for `rv64imc`, runs the rebuilt Spike, and checks that the trace
+  contains both custom mnemonics, reaches the pass loop, and does not execute
+  the failure `c.ebreak`.
+
+Run it with:
+
+```sh
+./scripts/test_custom_spike.sh
+```
+
+Expected output:
+
+```text
+custom Spike instruction test passed
+```
+
+The directed test uses an eight-lane dot product with an expected accumulator
+value of `46`. It then applies `M=3`, `S=1`, and `Z=-2`, expecting the signed
+INT8 result `67`. The generated trace is saved in
+[`results/raw/custom_spike_test.trace`](results/raw/custom_spike_test.trace).
+This verifies the actual emitted instruction words and the simulator's
+architectural behavior, rather than only testing a software model.
