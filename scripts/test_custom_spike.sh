@@ -24,18 +24,21 @@ riscv64-unknown-elf-gcc \
 
 "$SPIKE_DIR/build/spike" \
     --isa=rv64imc \
-    --instructions=10000 \
+    --instructions=100000 \
     --log=results/raw/custom_spike_test.trace \
     -l \
     build/custom_spike_test.elf \
     > results/raw/custom_spike_test.stdout \
     2> results/raw/custom_spike_test.stderr || true
 
-if grep -q 'xqmac8' results/raw/custom_spike_test.trace &&
-   grep -q 'xqrequant8' results/raw/custom_spike_test.trace &&
+XQMAC_COUNT="$(grep -c 'xqmac8' results/raw/custom_spike_test.trace || true)"
+XQREQUANT_COUNT="$(grep -c 'xqrequant8' results/raw/custom_spike_test.trace || true)"
+
+if [ "$XQMAC_COUNT" -ge 67 ] &&
+   [ "$XQREQUANT_COUNT" -ge 67 ] &&
    grep -q 'c.nop' results/raw/custom_spike_test.trace &&
    ! grep -q 'c.ebreak' results/raw/custom_spike_test.trace; then
-    echo "custom Spike instruction test passed"
+    echo "custom Spike instruction test passed (${XQMAC_COUNT} xqmac8, ${XQREQUANT_COUNT} xqrequant8)"
     exit 0
 fi
 

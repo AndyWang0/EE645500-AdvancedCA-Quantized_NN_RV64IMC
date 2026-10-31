@@ -486,3 +486,61 @@ The resulting disassembly and Spike artifacts are saved under
 [`results/raw/`](results/raw/), including
 [`x1.disassembly.txt`](results/raw/x1.disassembly.txt) and
 [`x1.trace`](results/raw/x1.trace).
+
+## Step 2.3 — Test custom instructions independently
+
+The independent instruction test is implemented in
+[`tests/test_custom_spike.c`](tests/test_custom_spike.c). It does not call
+`qgemm_custom()` or depend on model tensors, so failures can be attributed to
+the instruction encoding or Spike semantics rather than GEMM packing or model
+integration.
+
+### Test coverage
+
+The test contains software reference functions for both instructions and
+compares every emitted-instruction result with the corresponding reference
+result:
+
+- `xqmac8`
+  - Directed positive, negative, and mixed-sign packed-byte cases.
+  - Negative and large accumulator values.
+  - A near-`INT64_MAX` accumulator to exercise modulo-64-bit writeback.
+  - 64 deterministic pseudo-random operand cases.
+- `xqrequant8`
+  - Zero, positive, and negative accumulators.
+  - Zero, positive, negative, and maximum signed multipliers.
+  - Shift values including `0`, `1`, `2`, `6`, `31`, and `63`.
+  - Zero points at `-128`, `127`, and intermediate signed values.
+  - Positive and negative saturation.
+  - 64 deterministic pseudo-random accumulator, multiplier, shift, and
+    zero-point cases.
+
+The test also uses `rd = rs1` for `xqrequant8`, verifying the documented
+read-modify-write register overlap behavior. The software oracle uses unsigned
+bit-pattern accumulation for `xqmac8` so its modulo-`2^64` behavior does not
+depend on C signed-overflow behavior. Requantization uses `__int128`, matching
+the project reference contract.
+
+### Command and result
+
+Run the independent test with:
+
+```sh
+./scripts/test_custom_spike.sh
+```
+
+The script compiles the test for `rv64imc`, runs it on the modified Spike, and
+checks that the trace reaches the pass loop without executing the failure
+`c.ebreak`. It also checks the expected minimum number of custom-instruction
+executions, preventing a truncated Spike run from being reported as a pass.
+
+Expected output:
+
+```text
+custom Spike instruction test passed (67 xqmac8, 73 xqrequant8)
+```
+
+The trace and compiler diagnostics are saved as
+[`custom_spike_test.trace`](results/raw/custom_spike_test.trace),
+[`custom_spike_test.stdout`](results/raw/custom_spike_test.stdout), and
+[`custom_spike_test.stderr`](results/raw/custom_spike_test.stderr).
