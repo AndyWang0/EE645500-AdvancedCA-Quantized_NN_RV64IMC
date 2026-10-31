@@ -45,7 +45,7 @@ int main(void)
     qgemm_scalar(x1_input, model_weights, model_bias, x1_reference,
                  X1_M, X1_N, X1_K, model_multiplier, model_shift,
                  model_zero_point);
-    qgemm_custom(x1_input, model_weights, model_bias, x1_output,
+    qgemm_x2(x1_input, model_weights, model_bias, x1_output,
                  X1_M, X1_N, X1_K, model_multiplier, model_shift,
                  model_zero_point);
 

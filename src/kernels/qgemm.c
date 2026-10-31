@@ -58,10 +58,10 @@ void qgemm_scalar(const int8_t *a, const int8_t *w, const int64_t *bias,
     }
 }
 
-void qgemm_custom(const int8_t *a, const int8_t *w, const int64_t *bias,
-                  int8_t *c, uint32_t m, uint32_t n, uint32_t k,
-                  const int32_t *multiplier, const uint8_t *shift,
-                  const int8_t *zero_point)
+static void qgemm_packed(const int8_t *a, const int8_t *w, const int64_t *bias,
+                         int8_t *c, uint32_t m, uint32_t n, uint32_t k,
+                         const int32_t *multiplier, const uint8_t *shift,
+                         const int8_t *zero_point, int use_custom_requant)
 {
 #if defined(__riscv) && (__riscv_xlen == 64)
     uint32_t i;
@@ -86,10 +86,16 @@ void qgemm_custom(const int8_t *a, const int8_t *w, const int64_t *bias,
                 accumulator_bits += (uint64_t)product;
             }
 
-            uint64_t params = xq_pack_requant_params(
-                multiplier[j], shift[j], zero_point[j]);
-            c[i * n + j] = (int8_t)xqrequant8_emit(
-                (int64_t)accumulator_bits, params);
+            if (use_custom_requant != 0) {
+                uint64_t params = xq_pack_requant_params(
+                    multiplier[j], shift[j], zero_point[j]);
+                c[i * n + j] = (int8_t)xqrequant8_emit(
+                    (int64_t)accumulator_bits, params);
+            } else {
+                c[i * n + j] = requantize_reference(
+                    (int64_t)accumulator_bits, multiplier[j], shift[j],
+                    zero_point[j]);
+            }
         }
     }
 #else
@@ -97,6 +103,31 @@ void qgemm_custom(const int8_t *a, const int8_t *w, const int64_t *bias,
      * Keep host correctness tests executable. The RV64 build above is the
      * custom-instruction path; non-RISC-V builds use the same reference.
      */
+    (void)use_custom_requant;
     qgemm_scalar(a, w, bias, c, m, n, k, multiplier, shift, zero_point);
 #endif
+}
+
+void qgemm_x1(const int8_t *a, const int8_t *w, const int64_t *bias,
+              int8_t *c, uint32_t m, uint32_t n, uint32_t k,
+              const int32_t *multiplier, const uint8_t *shift,
+              const int8_t *zero_point)
+{
+    qgemm_packed(a, w, bias, c, m, n, k, multiplier, shift, zero_point, 0);
+}
+
+void qgemm_x2(const int8_t *a, const int8_t *w, const int64_t *bias,
+              int8_t *c, uint32_t m, uint32_t n, uint32_t k,
+              const int32_t *multiplier, const uint8_t *shift,
+              const int8_t *zero_point)
+{
+    qgemm_packed(a, w, bias, c, m, n, k, multiplier, shift, zero_point, 1);
+}
+
+void qgemm_custom(const int8_t *a, const int8_t *w, const int64_t *bias,
+                  int8_t *c, uint32_t m, uint32_t n, uint32_t k,
+                  const int32_t *multiplier, const uint8_t *shift,
+                  const int8_t *zero_point)
+{
+    qgemm_x2(a, w, bias, c, m, n, k, multiplier, shift, zero_point);
 }

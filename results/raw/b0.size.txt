@@ -1,12 +1,12 @@
 build/b0.elf  :
 section             size         addr
-.text                862   2147483648
-.rodata              736   2147484512
-.data                  8   2147485248
-.bss                 384   2147485256
-.sbss                  8   2147485640
+.text               1664   2147483648
+.rodata              736   2147485312
+.data                  8   2147486048
+.bss                 512   2147486056
+.sbss                  8   2147486568
 .riscv.attributes     38            0
 .comment              15            0
-Total               2051
+Total               2981
 
 

@@ -24,6 +24,16 @@ void qgemm_custom(const int8_t *a, const int8_t *w, const int64_t *bias,
                   const int32_t *multiplier, const uint8_t *shift,
                   const int8_t *zero_point);
 
+void qgemm_x1(const int8_t *a, const int8_t *w, const int64_t *bias,
+              int8_t *c, uint32_t m, uint32_t n, uint32_t k,
+              const int32_t *multiplier, const uint8_t *shift,
+              const int8_t *zero_point);
+
+void qgemm_x2(const int8_t *a, const int8_t *w, const int64_t *bias,
+              int8_t *c, uint32_t m, uint32_t n, uint32_t k,
+              const int32_t *multiplier, const uint8_t *shift,
+              const int8_t *zero_point);
+
 int8_t requantize_reference(int64_t accumulator, int32_t multiplier,
                             uint8_t shift, int8_t zero_point);
 

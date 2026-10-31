@@ -1,0 +1,4 @@
+configuration,dynamic_instructions,loads,stores,integer,multiply,branches,custom,xqmac8,xqrequant8,logical_macs,instructions_per_output,macs_per_instruction,text_bytes,instruction_change_vs_b0
+B0,62067,8704,128,43084,4352,5799,0,0,0,4096,484.8984,0.065993,1664,0.0000
+X1,80190,8704,128,59513,256,11077,512,512,0,4096,626.4844,0.051079,1664,-29.1991%
+X2,74820,8704,128,55729,0,9619,640,512,128,4096,584.5312,0.054745,1664,-20.5472%

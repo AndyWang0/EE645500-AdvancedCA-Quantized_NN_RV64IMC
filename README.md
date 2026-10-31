@@ -544,3 +544,81 @@ The trace and compiler diagnostics are saved as
 [`custom_spike_test.trace`](results/raw/custom_spike_test.trace),
 [`custom_spike_test.stdout`](results/raw/custom_spike_test.stdout), and
 [`custom_spike_test.stderr`](results/raw/custom_spike_test.stderr).
+
+## Step 2.4 — Integrate custom instructions into the C workload
+
+The workload now has explicit, independently buildable configurations:
+
+- **B0**: scalar MAC and scalar requantization.
+- **X1**: `xqmac8` accumulation with scalar software requantization.
+- **X2**: `xqmac8` accumulation with `xqrequant8` requantization.
+
+The common implementation is in
+[`src/kernels/qgemm.c`](src/kernels/qgemm.c). `qgemm_x1()` and `qgemm_x2()`
+share the packed reduction loop, but select different requantization paths.
+`qgemm_custom()` remains an X2-compatible API alias for existing callers.
+
+[`src/benchmarks/benchmark_main.c`](src/benchmarks/benchmark_main.c) uses identical
+`M=8`, `N=16`, `K=32` tensors and parameters for all configurations. The
+reference output is computed before the measured region. The
+`benchmark_start` and `benchmark_end` symbols surround only the selected
+configuration's GEMM call, so reference computation, output comparison, and
+the terminal spin loop do not distort the configuration comparison.
+
+Each configuration verifies all 128 output elements against the scalar
+reference after the measured region. A mismatch enters a `c.ebreak` failure
+loop; successful execution reaches the normal `nop` pass loop.
+
+## Step 2.5 — Preliminary performance measurements
+
+The reproducible measurement flow is
+[`scripts/run_benchmarks.sh`](scripts/run_benchmarks.sh). It:
+
+1. Builds `build/b0.elf`, `build/x1.elf`, and `build/x2.elf` with the same
+   compiler flags and workload.
+2. Saves size reports and disassemblies.
+3. Runs each ELF under the modified Spike with the same ISA and trace limit.
+4. Analyzes only the dynamic trace interval from `benchmark_start` to
+   `benchmark_end`.
+5. Writes per-configuration CSV files and
+   [`results/tables/summary.csv`](results/tables/summary.csv).
+
+The parser is
+[`scripts/analyze_trace.py`](scripts/analyze_trace.py). It counts total
+dynamic instructions, loads, stores, integer instructions, scalar multiply
+instructions, branches, custom instructions, `xqmac8`, and `xqrequant8`.
+It also computes instructions per output and logical MACs per retired
+instruction. The benchmark performs `8*16*32 = 4096` logical MACs in its
+measured GEMM.
+
+Run the complete preliminary benchmark with:
+
+```sh
+./scripts/run_benchmarks.sh
+```
+
+The current measured summary is:
+
+```text
+configuration,dynamic_instructions,loads,stores,integer,multiply,branches,custom,xqmac8,xqrequant8,logical_macs,instructions_per_output,macs_per_instruction,text_bytes,instruction_change_vs_b0
+B0,62067,8704,128,43084,4352,5799,0,0,0,4096,484.8984,0.065993,1664,0.0000
+X1,80190,8704,128,59513,256,11077,512,512,0,4096,626.4844,0.051079,1664,-29.1991%
+X2,74820,8704,128,55729,0,9619,640,512,128,4096,584.5312,0.054745,1664,-20.5472%
+```
+
+The measured X1/X2 instruction counts are higher than B0 for this small
+synthetic workload because explicit byte packing and loop/control overhead
+currently outweigh the removed scalar multiplies. This is a useful result, not
+a projected speedup: it identifies packing and control overhead as the first
+optimization target. The custom instructions are nevertheless executing at the
+expected frequencies:
+
+- X1: 512 `xqmac8` instructions, corresponding to `64*8` packed dot-product
+  groups, and no custom requantization instructions.
+- X2: 512 `xqmac8` and 128 `xqrequant8` instructions, one requantization per
+  output.
+
+The reports are ISA-level instruction measurements, not cycle or CPI
+measurements. Raw traces and disassemblies are saved under
+[`results/raw/`](results/raw/), and the machine-readable tables are under
+[`results/tables/`](results/tables/).
