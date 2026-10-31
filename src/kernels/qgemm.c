@@ -1,5 +1,9 @@
 #include "qgemm.h"
 
+#if defined(__riscv) && (__riscv_xlen == 64)
+#include "xq_ops.h"
+#endif
+
 static int8_t clamp_int8(__int128 value)
 {
     if (value > 127) {
@@ -59,9 +63,40 @@ void qgemm_custom(const int8_t *a, const int8_t *w, const int64_t *bias,
                   const int32_t *multiplier, const uint8_t *shift,
                   const int8_t *zero_point)
 {
+#if defined(__riscv) && (__riscv_xlen == 64)
+    uint32_t i;
+    uint32_t j;
+    uint32_t r;
+
+    for (i = 0; i < m; ++i) {
+        for (j = 0; j < n; ++j) {
+            uint64_t accumulator_bits = (uint64_t)bias[j];
+
+            for (r = 0; r + 8U <= k; r += 8U) {
+                uint64_t packed_a = xq_pack_i8(&a[i * k + r], 8U, 1U);
+                uint64_t packed_w = xq_pack_i8(&w[r * n + j], 8U, n);
+
+                accumulator_bits = (uint64_t)xqmac8_emit(
+                    (int64_t)accumulator_bits, packed_a, packed_w);
+            }
+
+            for (; r < k; ++r) {
+                int64_t product = (int64_t)a[i * k + r] *
+                                  (int64_t)w[r * n + j];
+                accumulator_bits += (uint64_t)product;
+            }
+
+            uint64_t params = xq_pack_requant_params(
+                multiplier[j], shift[j], zero_point[j]);
+            c[i * n + j] = (int8_t)xqrequant8_emit(
+                (int64_t)accumulator_bits, params);
+        }
+    }
+#else
     /*
-     * Keep B0 and the custom path comparable until xqmac8/xqrequant8 is
-     * available in the toolchain. The interface and output are fixed now.
+     * Keep host correctness tests executable. The RV64 build above is the
+     * custom-instruction path; non-RISC-V builds use the same reference.
      */
     qgemm_scalar(a, w, bias, c, m, n, k, multiplier, shift, zero_point);
+#endif
 }

@@ -368,3 +368,121 @@ INT8 result `67`. The generated trace is saved in
 [`results/raw/custom_spike_test.trace`](results/raw/custom_spike_test.trace).
 This verifies the actual emitted instruction words and the simulator's
 architectural behavior, rather than only testing a software model.
+
+## Step 2.2 — Emit custom instructions without modifying GCC
+
+The custom instructions are emitted with GNU assembler's `.insn` directive.
+No GCC source, backend, opcode table, or assembler installation was modified.
+The compiler still allocates ordinary RV64 integer registers, while the inline
+assembly supplies the custom instruction encoding and accurately describes its
+register dependencies.
+
+### Emission interface
+
+- [`src/kernels/xq_ops.h`](src/kernels/xq_ops.h): reusable inline wrappers for
+  `xqmac8`, `xqrequant8`, packed INT8 operands, and packed requantization
+  parameters.
+- [`src/kernels/qgemm.c`](src/kernels/qgemm.c): uses the wrappers in
+  `qgemm_custom()` when compiling for RV64. It emits one `xqmac8` for each
+  complete group of eight reduction elements and one `xqrequant8` per output.
+- [`src/kernels/qgemm.h`](src/kernels/qgemm.h): documents the RV64 custom path
+  and its host scalar fallback.
+
+The `xqmac8` wrapper uses:
+
+```c
+".insn r 0x0b, 0x0, 0x00, %0, %1, %2"
+: "+r" (accumulator)
+: "r" (packed_a), "r" (packed_w)
+```
+
+The `+r` constraint tells GCC that the accumulator is both read and written.
+The two input constraints provide the packed activation and weight operands.
+For `xqrequant8`, the accumulator is deliberately used for both `rd` and
+`rs1`, which is legal under the instruction design and avoids an unnecessary
+move:
+
+```c
+".insn r 0x0b, 0x0, 0x01, %0, %0, %1"
+: "+r" (accumulator)
+: "r" (params)
+```
+
+The helper packs byte zero into bits `[7:0]`, byte one into `[15:8]`, and so
+on, matching the architectural lane order. Requantization parameters use the
+specified layout: multiplier in bits `[31:0]`, shift in `[37:32]`, and signed
+zero point in `[45:38]`. The reserved upper bits remain zero.
+
+### Custom GEMM integration
+
+For each output element, `qgemm_custom()`:
+
+1. Initializes the 64-bit accumulator from the bias.
+2. Packs eight contiguous activation values and eight strided weight values.
+3. Emits `xqmac8` for each complete eight-element group.
+4. Handles a reduction tail shorter than eight elements with scalar
+   multiplication, without reading beyond either tensor.
+5. Packs the channel quantization parameters and emits `xqrequant8`.
+6. Stores the sign-extended INT8 result into the output tensor.
+
+On host builds, `qgemm_custom()` calls the scalar reference because the host
+cannot execute the custom RV64 instructions. This preserves the existing
+host regression test while ensuring the RV64 compilation selects the actual
+custom path.
+
+### Commands and verification
+
+Run the host regression:
+
+```sh
+gcc -std=c11 -Wall -Wextra -Werror -O2 \
+    tests/test_qgemm.c src/kernels/qgemm.c \
+    -o build/test_qgemm
+./build/test_qgemm
+```
+
+Compile the custom path for RV64IMC and inspect the generated instruction
+words:
+
+```sh
+riscv64-unknown-elf-gcc \
+    -std=c11 -march=rv64imc -mabi=lp64 -O2 \
+    -ffreestanding -fno-builtin -Wall -Wextra -Werror \
+    -Isrc/kernels -c src/kernels/qgemm.c \
+    -o build/qgemm_custom.o
+
+riscv64-unknown-elf-objdump -d build/qgemm_custom.o \
+    > build/qgemm_custom.disassembly.txt
+```
+
+The unmodified toolchain's `objdump` may print the custom words as raw
+instructions rather than mnemonic names. The expected words still visibly use
+the `custom-0` opcode:
+
+```text
+00b60e0b    # xqmac8 with compiler-selected registers
+02fe0e0b    # xqrequant8 with compiler-selected registers
+```
+
+Run the complete custom GEMM under the modified Spike:
+
+```sh
+./scripts/test_custom_qgemm.sh
+```
+
+This builds [`src/benchmarks/x1_main.c`](src/benchmarks/x1_main.c), computes
+the same deterministic GEMM with both `qgemm_scalar()` and `qgemm_custom()`,
+compares all `M*N` outputs, and then runs the custom ELF under Spike. The
+script requires both custom mnemonics in the trace and rejects the failure
+loop.
+
+Expected result:
+
+```text
+custom qgemm Spike test passed
+```
+
+The resulting disassembly and Spike artifacts are saved under
+[`results/raw/`](results/raw/), including
+[`x1.disassembly.txt`](results/raw/x1.disassembly.txt) and
+[`x1.trace`](results/raw/x1.trace).

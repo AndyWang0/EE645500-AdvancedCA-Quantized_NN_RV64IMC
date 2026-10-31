@@ -16,8 +16,8 @@ void qgemm_scalar(const int8_t *a, const int8_t *w, const int64_t *bias,
                   const int8_t *zero_point);
 
 /*
- * Day 1 compatibility path. The custom implementation will replace this
- * function's inner loop after the custom ISA is available.
+ * Uses xqmac8/xqrequant8 on RV64. Host builds retain a scalar fallback so
+ * correctness tests do not require a RISC-V simulator.
  */
 void qgemm_custom(const int8_t *a, const int8_t *w, const int64_t *bias,
                   int8_t *c, uint32_t m, uint32_t n, uint32_t k,
