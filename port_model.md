@@ -144,18 +144,80 @@ redistributing the model or generated weights.
 
 ## 2. Prepare the host Python environment
 
-The host tools inspect the FlatBuffer, execute the reference model, and
-generate C data. They are not linked into the RV64 target:
+### Purpose
+
+The host-side tools inspect the LiteRT FlatBuffer, execute the original model
+for reference outputs, and generate static C data for the bare-metal
+executor. They are not linked into the RV64 target. Keeping them in a
+project-local virtual environment prevents host package changes from
+affecting the system Python installation or the RISC-V build.
+
+The required packages are:
+
+- `numpy`: tensor and quantization-array handling.
+- `Pillow`: image loading and preprocessing for model-level tests.
+- `huggingface_hub`: optional authenticated/reproducible access to the model
+  repository.
+- `ai-edge-litert`: LiteRT model loading and host reference execution.
+
+### Implementation
+
+Create a virtual environment and install the host dependencies:
 
 ```sh
 python3 -m venv .venv
-. .venv/bin/activate
-python3 -m pip install --upgrade pip
-python3 -m pip install numpy Pillow huggingface_hub ai-edge-litert
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install numpy Pillow huggingface_hub ai-edge-litert
 ```
 
-Use the project's existing environment if these packages are already
-installed. Keep a dependency record so the export can be reproduced.
+`python3 -m venv .venv` creates an isolated environment without changing the
+system interpreter. Calling `.venv/bin/python` explicitly makes each command
+independent of shell activation state and ensures that packages are installed
+into the intended environment. `pip install --upgrade pip` updates only the
+virtual environment's package manager.
+
+Record the complete resolved dependency set:
+
+```sh
+.venv/bin/python -m pip freeze --all \
+  > model/source/resnet18/host_requirements.txt
+```
+
+The resulting
+[`host_requirements.txt`](model/source/resnet18/host_requirements.txt) is a
+reproducibility record for host model inspection and reference execution. The
+`.venv/` directory is ignored by Git because it contains platform-specific
+installed binaries; the requirements file is the portable record.
+
+Verify the environment before proceeding:
+
+```sh
+.venv/bin/python - <<'PY'
+import sys
+from importlib.metadata import version
+
+print(f"python={sys.version.split()[0]}")
+for package in ("numpy", "Pillow", "huggingface_hub", "ai-edge-litert"):
+    print(f"{package}={version(package)}")
+PY
+```
+
+The verified environment currently contains:
+
+```text
+Python 3.10.12
+numpy 2.2.6
+Pillow 12.3.0
+huggingface_hub 2.4.0
+ai-edge-litert 2.3.0
+```
+
+This step does not install TensorFlow into the virtual environment because
+the selected host workflow uses `ai-edge-litert`. TensorFlow remains useful
+only if a later exporter or reference tool specifically requires its APIs.
+The host environment is intentionally separate from the bare-metal command,
+which continues to use `riscv64-unknown-elf-gcc` with `-ffreestanding` and
+without a host runtime.
 
 ## 3. Inspect the LiteRT graph before implementing operators
 
