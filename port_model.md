@@ -221,7 +221,21 @@ without a host runtime.
 
 ## 3. Inspect the LiteRT graph before implementing operators
 
-Create `scripts/inspect_litert_model.py`. It must report:
+### Purpose
+
+This step converts the opaque LiteRT FlatBuffer into an explicit graph
+inventory before any bare-metal operator is implemented. It identifies the
+tensor layout, signedness, quantization parameters, constant-buffer sizes,
+operator order, convolution options, and the exact operator set that the
+fixed executor must support. Inspecting first prevents an incorrect
+implementation based on assumptions from the synthetic GEMM or from a
+different ResNet export.
+
+### Implementation
+
+[`scripts/inspect_litert_model.py`](scripts/inspect_litert_model.py) uses the
+LiteRT interpreter for public tensor metadata and the installed generated
+FlatBuffer schema for operator options. It:
 
 - Input and output tensor IDs, shapes, types, scales, and zero points.
 - Every operator in execution order.
@@ -230,6 +244,100 @@ Create `scripts/inspect_litert_model.py`. It must report:
 - Bias types and quantization.
 - Convolution stride, padding, dilation, and fused activation.
 - Operators that are not supported by the planned bare-metal executor.
+
+The script writes two artifacts:
+
+- [`graph_report.json`](model/source/resnet18/graph_report.json): complete
+  machine-readable tensor and operator report.
+- [`graph_summary.txt`](model/source/resnet18/graph_summary.txt): concise
+  human-readable inventory for review.
+
+Run it with the project virtual environment:
+
+```sh
+PYTHONPATH="$PWD" \
+  .venv/bin/python scripts/inspect_litert_model.py \
+    --model model/source/resnet18/resnet18_int8_channelwise.tflite \
+    --json model/source/resnet18/graph_report.json \
+    --summary model/source/resnet18/graph_summary.txt
+```
+
+`PYTHONPATH="$PWD"` makes the repository root explicit when the script is
+launched by path from the `scripts/` directory. The `--model` option selects
+the frozen FlatBuffer, while `--json` and `--summary` make the inspection
+results persistent rather than leaving them only in terminal output.
+
+The script disables interpreter delegates for inspection. An interpreter
+delegate is an optional backend that replaces supported parts of the graph
+with an optimized implementation, such as a CPU, GPU, or accelerator kernel.
+Delegates are useful for host execution, but their synthetic graph entries do
+not represent operators that the bare-metal executor must implement. The
+script therefore reads the actual FlatBuffer subgraph length, so only model
+operations are reported and host-added `DELEGATE` entries are excluded.
+
+### Inspection results
+
+The selected model contains one subgraph, 86 tensors, and 37 model
+operators:
+
+```text
+TRANSPOSE          1
+PAD                5
+CONV_2D           20
+MAX_POOL_2D        1
+ADD                8
+AVERAGE_POOL_2D    1
+FULLY_CONNECTED    1
+```
+
+No operator is outside the currently planned executor set. The model input
+is signed INT8 in NCHW layout. NCHW means
+`[batch, channels, height, width]`; here there is one image, three color
+channels, and a 224x224 spatial resolution. The graph immediately transposes
+this to NHWC, which means `[batch, height, width, channels]`, because the
+following LiteRT convolution operators use that layout.
+
+```text
+shape:       [1, 3, 224, 224]
+scale:       0.01865844801068306
+zero point:  -14
+```
+
+The shape specifies the number of elements in each tensor dimension. The
+quantization scale and zero point map an INT8 value `q` to an approximate real
+value using `scale * (q - zero_point)`. Thus, the input zero point of `-14`
+means that quantized value `-14` represents real zero; the scale determines
+the real-value spacing between adjacent quantized values.
+
+The output is a signed INT8 ImageNet logits tensor:
+
+```text
+shape:       [1, 1000]
+scale:       0.1705460548400879
+zero point:  -61
+```
+
+The output shape contains one batch and 1,000 class scores. Its scale and zero
+point must be used when interpreting the final logits; the bare-metal program
+must preserve the quantized values rather than treating them as unscaled
+floating-point scores.
+
+Convolution weights are channelwise quantized along dimension zero. For
+example, the first convolution has shape `[64, 7, 7, 3]` and 64 weight
+scales. In LiteRT's convolution layout, this means
+`[output_channels, kernel_height, kernel_width, input_channels]`: 64 filters,
+each with a 7x7 kernel over three input channels. A later 64-channel
+convolution has shape `[64, 3, 3, 64]`: 64 output filters, each with a 3x3
+kernel over 64 input channels, and therefore also has 64 per-output-channel
+scales. The report shows the complete scale arrays and quantized dimensions
+needed by the exporter.
+
+The graph includes an initial NCHW-to-NHWC `TRANSPOSE`, explicit `PAD`
+operators, fused ReLU on the first convolution and residual-path
+convolutions, max pooling, eight quantized residual `ADD` operations, global
+average pooling, and the final fully connected layer. The executor must
+preserve this order and cannot assume that padding or activation is always
+fused into convolution.
 
 Do not assume that the model uses the same layout or quantization convention as
 the synthetic GEMM. The integer conversion rule is:
