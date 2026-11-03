@@ -3,3 +3,4 @@ guide.md
 deliverables_mid.md
 build/
 *.trace
+*.tflite
