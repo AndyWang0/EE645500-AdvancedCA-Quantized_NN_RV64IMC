@@ -5,3 +5,4 @@ build/
 *.trace
 .venv/
 *.tflite
+model/test_vectors/host_validation/intermediate/

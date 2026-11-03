@@ -355,20 +355,67 @@ in this fixed graph; a general-purpose LiteRT runtime is not required.
 
 ## 4. Validate the original model on the host
 
-Before exporting tensors, run the original model with the host LiteRT
-interpreter. Use deterministic inputs first, then add representative
-ImageNet-style images.
+### Purpose
 
-For each test input, save:
+This step establishes the numerical reference for every later exporter,
+scalar-kernel, and custom-instruction comparison. The host LiteRT execution
+is not the bare-metal implementation; it is the trusted reference used to
+detect graph, layout, signedness, padding, and quantization mistakes before
+porting the model.
 
-- The input tensor after preprocessing and quantization.
-- The final output tensor.
-- The predicted class, if using an image.
-- Intermediate tensors when the host API makes them available.
+Use deterministic inputs first so that a failure can be reproduced exactly.
+After the integer port is correct, add representative ImageNet-style images
+to validate preprocessing and classification behavior.
+
+### Implementation
+
+[`scripts/validate_litert_model.py`](scripts/validate_litert_model.py)
+creates one deterministic signed-INT8 input using NumPy's seeded generator,
+runs the frozen model with the host LiteRT interpreter, and saves:
+
+- `input_0.bin`: the exact quantized input bytes.
+- `reference_output_0.bin`: the final quantized output bytes.
+- `validation_metadata.json`: tensor names, shapes, dtypes, quantization
+  parameters, statistics, and predicted class index.
+- `intermediate/tensor_<id>.bin`: available tensor snapshots after
+  invocation.
+
+Run the deterministic validation with:
+
+```sh
+PYTHONPATH="$PWD" \
+  .venv/bin/python scripts/validate_litert_model.py \
+    --model model/source/resnet18/resnet18_int8_channelwise.tflite \
+    --out-dir model/test_vectors/host_validation
+```
+
+The default seed is `20261104`; pass `--seed` to create a different
+reproducible test vector. The script checks that the model has exactly one
+INT8 input and one output, uses the model's actual input shape, invokes the
+interpreter, and writes raw arrays with NumPy's native contiguous layout.
+It records unavailable tensors explicitly because constant or delegate-owned
+buffers may not be readable through the interpreter after invocation.
+
+The current run produced:
+
+```text
+Host validation passed
+Predicted class index: 107
+Recorded 86 tensor records (52 snapshots available)
+```
+
+The intermediate directory is ignored by Git because it contains generated
+per-tensor binaries. The input, final reference output, and validation
+metadata remain the compact reproducibility artifacts.
 
 The model page's example uses RGB preprocessing with a 224x224 center crop.
 Use the actual input tensor shape, type, scale, and zero point reported by the
 inspection script rather than copying preprocessing assumptions blindly.
+
+For image-based validation, preprocess an RGB image according to the model's
+documented 224x224 input pipeline, quantize using the inspected input scale
+and zero point, and save the resulting input bytes through the same script
+interface. Do not feed normalized floating-point data to the INT8 interpreter.
 
 The host reference is the authority for validating the exported C graph.
 
