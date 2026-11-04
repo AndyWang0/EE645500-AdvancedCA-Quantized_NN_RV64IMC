@@ -525,6 +525,32 @@ must not be restricted to `int8_t` if the sum can exceed that range.
 
 ## 6. Convert LiteRT quantization parameters
 
+### Purpose
+
+This step converts the floating-point quantization metadata stored in the
+LiteRT FlatBuffer into integer parameters that the bare-metal executor can use
+without a runtime quantization library. It also preserves the correction terms
+needed when activation and weight zero points are not both zero. The exporter
+is the single source of these parameters so that B0, X1, and X2 use the same
+model scales and rounding contract.
+
+### 6.1 Read and validate quantization metadata
+
+`export_litert_model.py` reads the input, weight, and output quantization
+records for every `CONV_2D` and `FULLY_CONNECTED` operator. It restores each
+constant tensor to its declared FlatBuffer shape before processing it. This
+matters for channelwise weights: the first convolution is `[64, 7, 7, 3]`,
+so dimension zero contains 64 output channels even though the underlying byte
+buffer is flat.
+
+For each operator, the exporter accepts either one quantization value
+broadcast to all output channels or exactly one value per output channel. It
+rejects any other scale or zero-point length instead of silently broadcasting
+or truncating metadata. Weight zero points are converted to integer values and
+are exported per channel, including the current model's all-zero values.
+
+### 6.2 Export zero-point correction terms
+
 For a quantized convolution with symmetric weights:
 
 ```text
@@ -557,6 +583,26 @@ If the model reports a nonzero weight zero point, use the general expansion:
 
 and add the required correction terms. Do not silently assume symmetric
 weights when the model metadata says otherwise.
+
+The exporter computes the signed sum of the stored INT8 weights independently
+for every output channel. For the `[output_channel, kernel_height,
+kernel_width, input_channel]` convolution layout, this is a reduction over
+dimensions 1 through 3. Fully connected weights use the same dimension-zero
+output-channel convention. The generated quantization header contains:
+
+```c
+resnet18_op_N_input_zero_point
+resnet18_op_N_weight_zero_points[channel]
+resnet18_op_N_weight_sums[channel]
+```
+
+The sums are emitted as `int32_t`; the largest observed reduction in this
+model is within that range, but the accumulation used to calculate them is
+`int64_t` so the export cannot overflow while producing the metadata. The
+future operator implementation must use these arrays when applying the
+activation and weight zero-point correction.
+
+### 6.3 Convert real multipliers to fixed point
 
 For each output channel, calculate:
 
@@ -610,6 +656,15 @@ The shared C reference implementation exposes this fallback behavior as
 the scalar model path and exceptional-channel fallback cannot silently acquire
 different rounding or saturation rules.
 
+The conversion uses `math.frexp()` to normalize each positive real multiplier,
+rounds the normalized significand to a signed 31-bit multiplier, and stores
+the corresponding power-of-two shift. The exporter computes the ordinary
+`xqrequant8` representation with a maximum shift of 63. It separately computes
+an exact wider fallback representation with a maximum shift of 126, leaving
+one bit of headroom for the signed `__int128` rounding intermediate. A
+representable channel receives both forms; an unrepresentable channel keeps
+the ordinary fields at zero and sets `use_scalar_fallback[channel]`.
+
 An alternative implementation option is to expand `xqrequant8` so that it can
 represent the full fixed-point range required by the model. For example, a
 future revision could provide a wider shift field, a wider multiplier format,
@@ -631,6 +686,40 @@ assembly wrapper, tests, and existing measurements.
 Compare the rounding behavior with the LiteRT reference. The current ISA
 contract uses round-to-nearest, ties-away-from-zero, followed by zero-point
 addition and saturation to `[-128, 127]`.
+
+### 6.4 Run and verify the conversion
+
+Regenerate the model-specific export with:
+
+```sh
+PYTHONPATH="$PWD" .venv/bin/python scripts/export_litert_model.py \
+  --model model/source/resnet18/resnet18_int8_channelwise.tflite \
+  --out-dir model/exported/resnet18 \
+  --test-dir model/test_vectors/resnet18
+```
+
+The export currently produces 21 quantized convolution/fully-connected
+operators. Eight channels of operator 2 (the first convolution) require the
+wide fallback, with indices `[2, 4, 7, 9, 13, 36, 38, 48]`; all other
+channels fit the current instruction fields. The model's weight zero points
+are all zero, but they are still emitted so the executor can follow the
+general correction formula rather than relying on that observation.
+
+Compile the generated quantization header for the target ABI:
+
+```sh
+printf '#include "resnet18_quant_params.h"\nint main(void) { return 0; }\n' \
+  > /tmp/check_resnet_quant.c
+riscv64-unknown-elf-gcc -std=c11 -ffreestanding \
+  -march=rv64imc -mabi=lp64 \
+  -I model/exported/resnet18 \
+  -c /tmp/check_resnet_quant.c -o /tmp/check_resnet_quant.o
+```
+
+This verifies that the generated multiplier, shift, zero-point, and weight-sum
+arrays are valid C for the target compiler. Numerical layer comparison is
+performed after the scalar executor is implemented in Section 7; this step
+verifies conversion and metadata preservation.
 
 ## 7. Implement the scalar bare-metal executor first
 

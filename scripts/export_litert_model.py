@@ -70,6 +70,26 @@ def fixed_multiplier(real_value: float, max_shift: int = 63) -> tuple[int, int] 
     return multiplier, shift
 
 
+def channel_values(values: list[float], channels: int, name: str) -> list[float]:
+    if len(values) == 1:
+        return values * channels
+    if len(values) == channels:
+        return values
+    raise ValueError(
+        f"{name} has {len(values)} values, expected one or {channels}"
+    )
+
+
+def weight_channel_sums(values: np.ndarray, channels: int, name: str) -> list[int]:
+    if values.ndim == 0 or values.shape[0] != channels:
+        raise ValueError(
+            f"{name} shape {list(values.shape)} does not expose "
+            f"{channels} output channels on dimension zero"
+        )
+    return [int(np.asarray(values[channel], dtype=np.int64).sum())
+            for channel in range(channels)]
+
+
 def options_record(operator: Any) -> dict[str, Any]:
     option_type = operator.BuiltinOptionsType()
     offset = operator.BuiltinOptions()
@@ -132,6 +152,14 @@ def main() -> None:
         data = buffer.DataAsNumpy()
         data = np.array([], dtype=np.uint8) if isinstance(data, int) else np.asarray(data, dtype=np.uint8)
         values = data.view(dtype) if data.size and dtype != np.bool_ else data.astype(dtype)
+        if values.size and shape:
+            expected_size = math.prod(shape)
+            if values.size != expected_size:
+                raise ValueError(
+                    f"tensor {index} data has {values.size} values, "
+                    f"expected {expected_size} for shape {shape}"
+                )
+            values = values.reshape(shape)
         q = quantization(tensor)
         record = {
             "index": index,
@@ -168,40 +196,59 @@ def main() -> None:
             weight_q = quantization(tensors[inputs[1]])
             output_q = quantization(tensors[outputs[0]])
             if input_q["scales"] and weight_q["scales"] and output_q["scales"]:
-                multipliers = []
-                shifts = []
+                weight_record = next(
+                    record for record, values in constant_records
+                    if record["index"] == inputs[1]
+                )
+                weight_values = next(
+                    values for record, values in constant_records
+                    if record["index"] == inputs[1]
+                )
+                channels = int(weight_values.shape[0])
+                weight_scales = channel_values(
+                    weight_q["scales"], channels, f"tensor {inputs[1]} scales"
+                )
+                weight_zero_points = channel_values(
+                    [float(value) for value in weight_q["zero_points"]],
+                    channels,
+                    f"tensor {inputs[1]} zero points",
+                )
+                if any(value != int(value) for value in weight_zero_points):
+                    raise ValueError(
+                        f"tensor {inputs[1]} has non-integral weight zero point"
+                    )
+                weight_zero_points = [int(value) for value in weight_zero_points]
+                weight_sums = weight_channel_sums(
+                    weight_values, channels, weight_record["name"]
+                )
                 real_multipliers = [
                     input_q["scales"][0] * scale / output_q["scales"][0]
-                    for scale in weight_q["scales"]
+                    for scale in weight_scales
                 ]
-                for real_value in real_multipliers:
-                    fixed = fixed_multiplier(real_value)
-                    multipliers.append(fixed[0] if fixed else 0)
-                    shifts.append(fixed[1] if fixed else 0)
+                fixed_values = [fixed_multiplier(value) for value in real_multipliers]
+                fallback_values = [
+                    fixed_multiplier(value, max_shift=126)
+                    for value in real_multipliers
+                ]
                 fixed = {
                     "real_multipliers": real_multipliers,
-                    "multipliers": multipliers,
-                    "shifts": shifts,
+                    "multipliers": [value[0] if value else 0 for value in fixed_values],
+                    "shifts": [value[1] if value else 0 for value in fixed_values],
                     "fallback_multipliers": [
-                        fixed_multiplier(value, max_shift=127)[0]
-                        for value in real_multipliers
+                        value[0] if value else 0 for value in fallback_values
                     ],
                     "fallback_shifts": [
-                        fixed_multiplier(value, max_shift=127)[1]
-                        for value in real_multipliers
+                        value[1] if value else 0 for value in fallback_values
                     ],
-                    "use_scalar_fallback": [
-                        fixed_multiplier(value) is None
-                        for value in real_multipliers
-                    ],
+                    "use_scalar_fallback": [value is None for value in fixed_values],
                     "unrepresentable_channels": [
                         index for index, value in enumerate(real_multipliers)
-                        if fixed_multiplier(value) is None
+                        if fixed_values[index] is None
                     ],
-                    "representable": all(
-                        fixed_multiplier(value) is not None
-                        for value in real_multipliers
-                    ),
+                    "representable": all(value is not None for value in fixed_values),
+                    "input_zero_point": input_q["zero_points"][0],
+                    "weight_zero_points": weight_zero_points,
+                    "weight_sums": weight_sums,
                     "output_zero_point": output_q["zero_points"][0],
                 }
         operators.append({
@@ -253,6 +300,11 @@ def main() -> None:
                 out.write(f"static const int32_t resnet18_op_{op['index']}_fallback_multipliers[{len(fixed['fallback_multipliers'])}] = {{{fallback_multipliers}}};\n")
                 out.write(f"static const uint8_t resnet18_op_{op['index']}_fallback_shifts[{len(fixed['fallback_shifts'])}] = {{{fallback_shifts}}};\n")
                 out.write(f"static const uint8_t resnet18_op_{op['index']}_use_scalar_fallback[{len(fixed['use_scalar_fallback'])}] = {{{fallback_flags}}};\n")
+                weight_zero_points = ", ".join(str(x) for x in fixed["weight_zero_points"])
+                weight_sums = ", ".join(str(x) for x in fixed["weight_sums"])
+                out.write(f"static const int32_t resnet18_op_{op['index']}_input_zero_point = {fixed['input_zero_point']};\n")
+                out.write(f"static const int32_t resnet18_op_{op['index']}_weight_zero_points[{len(fixed['weight_zero_points'])}] = {{{weight_zero_points}}};\n")
+                out.write(f"static const int32_t resnet18_op_{op['index']}_weight_sums[{len(fixed['weight_sums'])}] = {{{weight_sums}}};\n")
                 out.write(f"static const int8_t resnet18_op_{op['index']}_output_zero_point = {fixed['output_zero_point']};\n")
         out.write("\n#endif\n")
 
