@@ -251,6 +251,26 @@ def main() -> None:
                     "weight_sums": weight_sums,
                     "output_zero_point": output_q["zero_points"][0],
                 }
+        elif name == "ADD" and len(inputs) >= 2:
+            left_q = quantization(tensors[inputs[0]])
+            right_q = quantization(tensors[inputs[1]])
+            output_q = quantization(tensors[outputs[0]])
+            if left_q["scales"] and right_q["scales"] and output_q["scales"]:
+                add_multipliers = [
+                    left_q["scales"][0] / output_q["scales"][0],
+                    right_q["scales"][0] / output_q["scales"][0],
+                ]
+                add_fixed = [fixed_multiplier(value) for value in add_multipliers]
+                if any(value is None for value in add_fixed):
+                    raise ValueError(f"ADD operator {index} multiplier is not representable")
+                fixed = {
+                    "input_zero_points": [
+                        left_q["zero_points"][0], right_q["zero_points"][0]
+                    ],
+                    "multipliers": [value[0] for value in add_fixed],
+                    "shifts": [value[1] for value in add_fixed],
+                    "output_zero_point": output_q["zero_points"][0],
+                }
         operators.append({
             "index": index,
             "operator": name,
@@ -260,17 +280,20 @@ def main() -> None:
             "fixed_point": fixed,
         })
 
-    def write_arrays(path: Path, records: list[tuple[dict[str, Any], np.ndarray]]) -> None:
+    def write_arrays(path: Path, records: list[tuple[dict[str, Any], np.ndarray]],
+                     guard: str) -> None:
         with path.open("w", encoding="utf-8") as out:
-            out.write("#ifndef RESNET18_EXPORTED_ARRAYS_H\n#define RESNET18_EXPORTED_ARRAYS_H\n#include <stdint.h>\n#include <stdbool.h>\n\n")
+            out.write(f"#ifndef {guard}\n#define {guard}\n#include <stdint.h>\n#include <stdbool.h>\n\n")
             for record, values in records:
                 out.write(f"static const {record['type']} {record['symbol']}[{values.size}] __attribute__((aligned(8))) = {{\n")
                 out.write(array_literal(values))
                 out.write("\n};\n\n")
             out.write("#endif\n")
 
-    write_arrays(args.out_dir / "resnet18_weights.h", weights_records)
-    write_arrays(args.out_dir / "resnet18_biases.h", bias_records)
+    write_arrays(args.out_dir / "resnet18_weights.h", weights_records,
+                 "RESNET18_EXPORTED_WEIGHTS_H")
+    write_arrays(args.out_dir / "resnet18_biases.h", bias_records,
+                 "RESNET18_EXPORTED_BIASES_H")
 
     with (args.out_dir / "resnet18_shapes.h").open("w", encoding="utf-8") as out:
         out.write("#ifndef RESNET18_EXPORTED_SHAPES_H\n#define RESNET18_EXPORTED_SHAPES_H\n#include <stdint.h>\n\n")
@@ -289,7 +312,7 @@ def main() -> None:
             out.write(f"static const int32_t {record['symbol']}_quantized_dimension = {q['quantized_dimension']};\n")
         for op in operators:
             fixed = op["fixed_point"]
-            if fixed:
+            if fixed and op["operator"] in {"CONV_2D", "FULLY_CONNECTED"}:
                 values = ", ".join(str(x) for x in fixed["multipliers"])
                 shifts = ", ".join(str(x) for x in fixed["shifts"])
                 out.write(f"static const int32_t resnet18_op_{op['index']}_multipliers[{len(fixed['multipliers'])}] = {{{values}}};\n")
@@ -306,16 +329,99 @@ def main() -> None:
                 out.write(f"static const int32_t resnet18_op_{op['index']}_weight_zero_points[{len(fixed['weight_zero_points'])}] = {{{weight_zero_points}}};\n")
                 out.write(f"static const int32_t resnet18_op_{op['index']}_weight_sums[{len(fixed['weight_sums'])}] = {{{weight_sums}}};\n")
                 out.write(f"static const int8_t resnet18_op_{op['index']}_output_zero_point = {fixed['output_zero_point']};\n")
+            elif fixed and op["operator"] == "ADD":
+                input_zero_points = ", ".join(str(x) for x in fixed["input_zero_points"])
+                multipliers = ", ".join(str(x) for x in fixed["multipliers"])
+                shifts = ", ".join(str(x) for x in fixed["shifts"])
+                out.write(f"static const int32_t resnet18_op_{op['index']}_input_zero_points[2] = {{{input_zero_points}}};\n")
+                out.write(f"static const int32_t resnet18_op_{op['index']}_add_multipliers[2] = {{{multipliers}}};\n")
+                out.write(f"static const uint8_t resnet18_op_{op['index']}_add_shifts[2] = {{{shifts}}};\n")
+                out.write(f"static const int8_t resnet18_op_{op['index']}_output_zero_point = {fixed['output_zero_point']};\n")
         out.write("\n#endif\n")
 
     with (args.out_dir / "resnet18_graph.h").open("w", encoding="utf-8") as out:
-        out.write("#ifndef RESNET18_EXPORTED_GRAPH_H\n#define RESNET18_EXPORTED_GRAPH_H\n#include <stdint.h>\n\ntypedef struct { uint8_t operator_kind; uint16_t input_count; uint16_t output_count; const int32_t *inputs; const int32_t *outputs; } resnet18_operator_t;\n")
+        out.write(
+            "#ifndef RESNET18_EXPORTED_GRAPH_H\n"
+            "#define RESNET18_EXPORTED_GRAPH_H\n"
+            "#include <stdint.h>\n"
+            "#include \"resnet18_weights.h\"\n"
+            "#include \"resnet18_biases.h\"\n\n"
+            "typedef struct {\n"
+            "    uint8_t type;\n"
+            "    uint8_t rank;\n"
+            "    uint32_t elements;\n"
+            "    int32_t zero_point;\n"
+            "    int32_t shape[4];\n"
+            "    int8_t *data;\n"
+            "    const void *constant_data;\n"
+            "} resnet18_tensor_t;\n\n"
+            "typedef struct {\n"
+            "    uint8_t operator_kind;\n"
+            "    uint8_t fused_activation;\n"
+            "    uint8_t padding;\n"
+            "    uint16_t input_count;\n"
+            "    uint16_t output_count;\n"
+            "    uint16_t stride_h;\n"
+            "    uint16_t stride_w;\n"
+            "    uint16_t filter_h;\n"
+            "    uint16_t filter_w;\n"
+            "    const int32_t *inputs;\n"
+            "    const int32_t *outputs;\n"
+            "} resnet18_operator_t;\n\n"
+        )
+        for record in tensor_records:
+            if not record["constant"]:
+                elements = math.prod(record["shape"]) if record["shape"] else 1
+                out.write(
+                    f"static int8_t resnet18_tensor_storage_{record['index']}[{elements}]"
+                    " __attribute__((aligned(8)));\n"
+                )
+        out.write(f"static const uint32_t resnet18_tensor_count = {len(tensor_records)};\n")
+        out.write("static resnet18_tensor_t resnet18_tensors[] = {\n")
+        type_ids = {"int8_t": 1, "int32_t": 2, "int64_t": 3, "uint8_t": 4, "uint32_t": 5, "bool": 6}
+        for record in tensor_records:
+            shape = record["shape"][:4] + [1] * (4 - len(record["shape"]))
+            shape_text = ", ".join(str(value) for value in shape)
+            elements = math.prod(record["shape"]) if record["shape"] else 1
+            data = "0" if record["constant"] else f"resnet18_tensor_storage_{record['index']}"
+            constant = f"(const void *){record['symbol']}" if record["constant"] else "0"
+            zero_point = (
+                record["quantization"]["zero_points"][0]
+                if record["quantization"]["zero_points"] else 0
+            )
+            out.write(
+                "    {" + ", ".join(str(value) for value in [
+                    type_ids[record["type"]], len(record["shape"]), elements,
+                    zero_point
+                ]) + ", {" + shape_text + "}, " + data + ", " + constant +
+                "},\n"
+            )
+        out.write("};\n\n")
         out.write(f"static const uint32_t resnet18_operator_count = {len(operators)};\n")
         for op in operators:
             ins = ", ".join(str(x) for x in op["inputs"]) or "0"
             outs = ", ".join(str(x) for x in op["outputs"]) or "0"
             out.write(f"static const int32_t resnet18_op_{op['index']}_inputs[] = {{{ins}}};\n")
             out.write(f"static const int32_t resnet18_op_{op['index']}_outputs[] = {{{outs}}};\n")
+        out.write("static const resnet18_operator_t resnet18_operators[] = {\n")
+        kind_ids = {
+            "ADD": 1, "AVERAGE_POOL_2D": 2, "CONV_2D": 3, "FULLY_CONNECTED": 4,
+            "MAX_POOL_2D": 5, "PAD": 6, "TRANSPOSE": 7,
+        }
+        activation_ids = {"NONE": 0, "RELU": 1}
+        padding_ids = {"VALID": 0, "SAME": 1}
+        for op in operators:
+            options = op["options"]
+            out.write(
+                f"    {{{kind_ids[op['operator']]}, "
+                f"{activation_ids.get(options.get('fused_activation', 'NONE'), 0)}, "
+                f"{padding_ids.get(options.get('padding', 'VALID'), 0)}, "
+                f"{len(op['inputs'])}, {len(op['outputs'])}, "
+                f"{options.get('stride_h', 1)}, {options.get('stride_w', 1)}, "
+                f"{options.get('filter_h', 0)}, {options.get('filter_w', 0)}, "
+                f"resnet18_op_{op['index']}_inputs, resnet18_op_{op['index']}_outputs}},\n"
+            )
+        out.write("};\n\n")
         out.write("\n#endif\n")
 
     metadata = {

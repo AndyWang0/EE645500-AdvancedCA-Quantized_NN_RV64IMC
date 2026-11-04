@@ -35,6 +35,7 @@ def main() -> None:
     interpreter = Interpreter(
         model_path=str(args.model),
         experimental_delegates=[],
+        experimental_preserve_all_tensors=True,
     )
     interpreter.allocate_tensors()
     inputs = interpreter.get_input_details()

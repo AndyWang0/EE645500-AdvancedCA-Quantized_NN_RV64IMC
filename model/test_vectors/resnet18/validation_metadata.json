@@ -61,68 +61,211 @@
     {
       "index": 0,
       "name": "g0::batch_norm_11",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_0.bin",
+      "stats": {
+        "shape": [
+          1,
+          14,
+          14,
+          256
+        ],
+        "dtype": "int8",
+        "bytes": 50176,
+        "min": -74,
+        "max": 17,
+        "sum": -1729661
+      }
     },
     {
       "index": 1,
       "name": "g0::batch_norm_12",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_1.bin",
+      "stats": {
+        "shape": [
+          1,
+          14,
+          14,
+          256
+        ],
+        "dtype": "int8",
+        "bytes": 50176,
+        "min": -93,
+        "max": 56,
+        "sum": 774431
+      }
     },
     {
       "index": 2,
       "name": "g0::batch_norm_14",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_2.bin",
+      "stats": {
+        "shape": [
+          1,
+          14,
+          14,
+          256
+        ],
+        "dtype": "int8",
+        "bytes": 50176,
+        "min": -30,
+        "max": 43,
+        "sum": 805292
+      }
     },
     {
       "index": 3,
       "name": "g0::batch_norm_16",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_3.bin",
+      "stats": {
+        "shape": [
+          1,
+          7,
+          7,
+          512
+        ],
+        "dtype": "int8",
+        "bytes": 25088,
+        "min": -34,
+        "max": 14,
+        "sum": -242310
+      }
     },
     {
       "index": 4,
       "name": "g0::batch_norm_17",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_4.bin",
+      "stats": {
+        "shape": [
+          1,
+          7,
+          7,
+          512
+        ],
+        "dtype": "int8",
+        "bytes": 25088,
+        "min": -57,
+        "max": 41,
+        "sum": -390607
+      }
     },
     {
       "index": 5,
       "name": "g0::batch_norm_19",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_5.bin",
+      "stats": {
+        "shape": [
+          1,
+          7,
+          7,
+          512
+        ],
+        "dtype": "int8",
+        "bytes": 25088,
+        "min": -76,
+        "max": -19,
+        "sum": -1412002
+      }
     },
     {
       "index": 6,
       "name": "g0::batch_norm_2",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_6.bin",
+      "stats": {
+        "shape": [
+          1,
+          56,
+          56,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 200704,
+        "min": -33,
+        "max": 68,
+        "sum": 2981178
+      }
     },
     {
       "index": 7,
       "name": "g0::batch_norm_4",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_7.bin",
+      "stats": {
+        "shape": [
+          1,
+          56,
+          56,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 200704,
+        "min": -87,
+        "max": 77,
+        "sum": 3293662
+      }
     },
     {
       "index": 8,
       "name": "g0::batch_norm_6",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_8.bin",
+      "stats": {
+        "shape": [
+          1,
+          28,
+          28,
+          128
+        ],
+        "dtype": "int8",
+        "bytes": 100352,
+        "min": -72,
+        "max": 25,
+        "sum": -2144597
+      }
     },
     {
       "index": 9,
       "name": "g0::batch_norm_7",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_9.bin",
+      "stats": {
+        "shape": [
+          1,
+          28,
+          28,
+          128
+        ],
+        "dtype": "int8",
+        "bytes": 100352,
+        "min": -78,
+        "max": 127,
+        "sum": 2453687
+      }
     },
     {
       "index": 10,
       "name": "g0::batch_norm_9",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_10.bin",
+      "stats": {
+        "shape": [
+          1,
+          28,
+          28,
+          128
+        ],
+        "dtype": "int8",
+        "bytes": 100352,
+        "min": -47,
+        "max": 49,
+        "sum": 807792
+      }
     },
     {
       "index": 11,
@@ -463,26 +606,78 @@
     {
       "index": 32,
       "name": "g0::conv2d_10_pad",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_32.bin",
+      "stats": {
+        "shape": [
+          1,
+          30,
+          30,
+          128
+        ],
+        "dtype": "int8",
+        "bytes": 115200,
+        "min": -128,
+        "max": 18,
+        "sum": -14182992
+      }
     },
     {
       "index": 33,
       "name": "g0::conv2d_15_pad",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_33.bin",
+      "stats": {
+        "shape": [
+          1,
+          16,
+          16,
+          256
+        ],
+        "dtype": "int8",
+        "bytes": 65536,
+        "min": -128,
+        "max": -80,
+        "sum": -8247494
+      }
     },
     {
       "index": 34,
       "name": "g0::conv2d_5_pad",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_34.bin",
+      "stats": {
+        "shape": [
+          1,
+          58,
+          58,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 215296,
+        "min": -128,
+        "max": 30,
+        "sum": -24059508
+      }
     },
     {
       "index": 35,
       "name": "g0::conv2d_pad",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_35.bin",
+      "stats": {
+        "shape": [
+          1,
+          230,
+          230,
+          3
+        ],
+        "dtype": "int8",
+        "bytes": 158700,
+        "min": -128,
+        "max": 127,
+        "sum": -148501
+      }
     },
     {
       "index": 36,
@@ -589,8 +784,21 @@
     {
       "index": 42,
       "name": "g0::max_pool2d_padded",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_42.bin",
+      "stats": {
+        "shape": [
+          1,
+          114,
+          114,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 831744,
+        "min": -128,
+        "max": 99,
+        "sum": -96465183
+      }
     },
     {
       "index": 43,
@@ -1008,50 +1216,154 @@
     {
       "index": 65,
       "name": "g0::relu_",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_65.bin",
+      "stats": {
+        "shape": [
+          1,
+          112,
+          112,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 802816,
+        "min": -128,
+        "max": 99,
+        "sum": -92762399
+      }
     },
     {
       "index": 66,
       "name": "g0::relu__1",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_66.bin",
+      "stats": {
+        "shape": [
+          1,
+          56,
+          56,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 200704,
+        "min": -128,
+        "max": -40,
+        "sum": -24312319
+      }
     },
     {
       "index": 67,
       "name": "g0::relu__10",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_67.bin",
+      "stats": {
+        "shape": [
+          1,
+          14,
+          14,
+          256
+        ],
+        "dtype": "int8",
+        "bytes": 50176,
+        "min": -128,
+        "max": -49,
+        "sum": -6210427
+      }
     },
     {
       "index": 68,
       "name": "g0::relu__11",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_68.bin",
+      "stats": {
+        "shape": [
+          1,
+          14,
+          14,
+          256
+        ],
+        "dtype": "int8",
+        "bytes": 50176,
+        "min": -128,
+        "max": -71,
+        "sum": -6334572
+      }
     },
     {
       "index": 69,
       "name": "g0::relu__12",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_69.bin",
+      "stats": {
+        "shape": [
+          1,
+          14,
+          14,
+          256
+        ],
+        "dtype": "int8",
+        "bytes": 50176,
+        "min": -128,
+        "max": -80,
+        "sum": -6281414
+      }
     },
     {
       "index": 70,
       "name": "g0::relu__13",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_70.bin",
+      "stats": {
+        "shape": [
+          1,
+          7,
+          7,
+          512
+        ],
+        "dtype": "int8",
+        "bytes": 25088,
+        "min": -128,
+        "max": -58,
+        "sum": -3185694
+      }
     },
     {
       "index": 71,
       "name": "g0::relu__14",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_71.bin",
+      "stats": {
+        "shape": [
+          1,
+          7,
+          7,
+          512
+        ],
+        "dtype": "int8",
+        "bytes": 25088,
+        "min": -128,
+        "max": -82,
+        "sum": -3181612
+      }
     },
     {
       "index": 72,
       "name": "g0::relu__15",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_72.bin",
+      "stats": {
+        "shape": [
+          1,
+          7,
+          7,
+          512
+        ],
+        "dtype": "int8",
+        "bytes": 25088,
+        "min": -128,
+        "max": -84,
+        "sum": -3173938
+      }
     },
     {
       "index": 73,
@@ -1068,57 +1380,161 @@
         "dtype": "int8",
         "bytes": 25088,
         "min": -128,
-        "max": -21,
-        "sum": -3087528
+        "max": -81,
+        "sum": -3151779
       }
     },
     {
       "index": 74,
       "name": "g0::relu__2",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_74.bin",
+      "stats": {
+        "shape": [
+          1,
+          56,
+          56,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 200704,
+        "min": -128,
+        "max": 84,
+        "sum": -20626959
+      }
     },
     {
       "index": 75,
       "name": "g0::relu__3",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_75.bin",
+      "stats": {
+        "shape": [
+          1,
+          56,
+          56,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 200704,
+        "min": -128,
+        "max": 62,
+        "sum": -24334139
+      }
     },
     {
       "index": 76,
       "name": "g0::relu__4",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_76.bin",
+      "stats": {
+        "shape": [
+          1,
+          56,
+          56,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 200704,
+        "min": -128,
+        "max": 30,
+        "sum": -22191732
+      }
     },
     {
       "index": 77,
       "name": "g0::relu__5",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_77.bin",
+      "stats": {
+        "shape": [
+          1,
+          28,
+          28,
+          128
+        ],
+        "dtype": "int8",
+        "bytes": 100352,
+        "min": -128,
+        "max": 81,
+        "sum": -12128276
+      }
     },
     {
       "index": 78,
       "name": "g0::relu__6",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_78.bin",
+      "stats": {
+        "shape": [
+          1,
+          28,
+          28,
+          128
+        ],
+        "dtype": "int8",
+        "bytes": 100352,
+        "min": -128,
+        "max": 10,
+        "sum": -12219383
+      }
     },
     {
       "index": 79,
       "name": "g0::relu__7",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_79.bin",
+      "stats": {
+        "shape": [
+          1,
+          28,
+          28,
+          128
+        ],
+        "dtype": "int8",
+        "bytes": 100352,
+        "min": -128,
+        "max": -23,
+        "sum": -12547576
+      }
     },
     {
       "index": 80,
       "name": "g0::relu__8",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_80.bin",
+      "stats": {
+        "shape": [
+          1,
+          28,
+          28,
+          128
+        ],
+        "dtype": "int8",
+        "bytes": 100352,
+        "min": -128,
+        "max": 18,
+        "sum": -12282448
+      }
     },
     {
       "index": 81,
       "name": "g0::relu__9",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_81.bin",
+      "stats": {
+        "shape": [
+          1,
+          14,
+          14,
+          256
+        ],
+        "dtype": "int8",
+        "bytes": 50176,
+        "min": -128,
+        "max": -36,
+        "sum": -6258236
+      }
     },
     {
       "index": 82,
@@ -1142,14 +1558,40 @@
     {
       "index": 83,
       "name": "g0::max_pool2d_native_nhwc",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_83.bin",
+      "stats": {
+        "shape": [
+          1,
+          56,
+          56,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 200704,
+        "min": -128,
+        "max": 99,
+        "sum": -19566281
+      }
     },
     {
       "index": 84,
       "name": "g0::layout.transpose",
-      "available": false,
-      "reason": "Tensor data is null. Run allocate_tensors() first"
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_84.bin",
+      "stats": {
+        "shape": [
+          1,
+          224,
+          224,
+          3
+        ],
+        "dtype": "int8",
+        "bytes": 150528,
+        "min": -128,
+        "max": 127,
+        "sum": -34093
+      }
     },
     {
       "index": 85,

@@ -386,7 +386,7 @@ Run the deterministic validation with:
 PYTHONPATH="$PWD" \
   .venv/bin/python scripts/validate_litert_model.py \
     --model model/source/resnet18/resnet18_int8_channelwise.tflite \
-    --out-dir model/test_vectors/host_validation \
+    --out-dir model/test_vectors/resnet18 \
     --debug-dir model/test_vectors/host_validation/intermediate
 ```
 
@@ -394,16 +394,35 @@ The default seed is `20261104`; pass `--seed` to create a different
 reproducible test vector. The script checks that the model has exactly one
 INT8 input and one output, uses the model's actual input shape, invokes the
 interpreter, and writes raw arrays with NumPy's native contiguous layout.
-It records unavailable tensors explicitly because constant or delegate-owned
-buffers may not be readable through the interpreter after invocation.
+It enables LiteRT's `experimental_preserve_all_tensors` debugging mode, which
+keeps intermediate buffers readable after invocation. It still records any
+tensor that remains unavailable explicitly instead of silently omitting it.
 
 The current run produced:
 
 ```text
 Host validation passed
 Predicted class index: 107
-Recorded 86 tensor records (52 snapshots available)
+Recorded 86 tensor records (86 snapshots available)
 ```
+
+To compare a ported run with these host snapshots, place its tensor dumps and
+matching `validation_metadata.json` in a separate directory using the same
+`tensor_<id>.bin` naming convention, then run:
+
+```sh
+.venv/bin/python scripts/compare_resnet18.py \
+  --host-dir model/test_vectors/resnet18 \
+  --ported-dir build/resnet18_b0_tensors
+```
+
+The comparator checks every available tensor, reports shape errors, mismatch
+counts, maximum absolute error, and the first mismatching element, and exits
+with status 1 if any tensor differs. This makes it suitable for B0, X1, and
+X2 regression scripts. The target-side dump producer can use
+`resnet18_copy_tensor()` to serialize each nonconstant tensor into this
+directory format; the comparison logic is intentionally independent of
+whether the tensors came from a host executor, Spike, or a hardware run.
 
 The intermediate directory is ignored by Git because it contains generated
 per-tensor binaries. The input, final reference output, and validation
@@ -723,8 +742,89 @@ verifies conversion and metadata preservation.
 
 ## 7. Implement the scalar bare-metal executor first
 
-Implement B0 before emitting custom instructions. The executor should contain
-only the operators used by the inspected graph:
+The scalar executor is the B0 correctness baseline. It runs the complete
+inspected graph without custom instructions, dynamic allocation, an operating
+system, LiteRT, or floating-point arithmetic. X1 and X2 are only meaningful
+after this path produces the same tensors as the host reference.
+
+### 7.1 Requirements and static storage
+
+The executor must satisfy these constraints:
+
+- Static or global model and activation storage.
+- No `malloc`, file I/O, operating system, or `pk`.
+- Integer-only executor arithmetic; the target is compiled for `rv64imc`
+  without `F` or `D`.
+- Activation storage that can eventually be reused after a tensor's last
+  consumer.
+- Explicit tensor dimensions and strides.
+- Exact integer quantization behavior.
+
+The exporter generates `resnet18_graph.h` in
+`model/exported/resnet18/`. It contains static storage declarations for every
+nonconstant tensor, pointers to generated INT8 weights and INT32 biases,
+tensor ranks and dimensions, element counts, zero points, and operator
+metadata. This keeps model data in `.rodata` and activations in `.bss`.
+Complete tensors are not placed on the stack. The current implementation
+allocates one static storage array for each nonconstant tensor; this is
+correctness-first storage, not yet a true ping-pong allocation. A later
+memory-optimization pass can reuse buffers after the last consumer of each
+tensor, but it must preserve the residual branches whose values remain live.
+
+`resnet18_b0_main.c` loads the canonical input fixture through an executor API
+so the generated header's storage has one owner even though the main and
+executor are separate translation units.
+
+### 7.2 Implement the operator kernels
+
+`resnet18_b0_executor.c` dispatches the 37 operators in FlatBuffer order:
+
+```text
+TRANSPOSE
+PAD
+CONV_2D
+MAX_POOL_2D
+ADD
+AVERAGE_POOL_2D
+FULLY_CONNECTED
+```
+
+The transpose converts the model's NCHW input `[1, 3, 224, 224]` to the NHWC
+layout used by the convolution graph. Padding uses the tensor's quantized zero
+point, not numeric zero. Convolution weights are indexed as
+`[output_channel, kernel_height, kernel_width, input_channel]`; SAME padding
+is derived from the input/output shapes and VALID padding is handled directly.
+The first convolution and fully connected layer use scalar reduction loops,
+including the non-divisible reduction tail naturally.
+
+Max pooling performs integer comparisons. Global average pooling accumulates
+centered INT8 values in `int64_t`, applies round-to-nearest ties-away-from-zero
+division by the filter area, and restores the output zero point. Residual ADD
+converts both inputs with their exported fixed-point multipliers, combines the
+scaled products before one rounding step, adds the output zero point, saturates
+to INT8, and applies fused ReLU in the output quantized domain.
+
+For this model, the global-average-pool input and output use the same scale
+and zero point, so the centered integer average is valid. A different model
+would require an explicit average-pool output requantization step.
+
+Convolution and fully connected operators use the exported per-channel weight
+sums and zero points:
+
+```text
+acc =
+    bias
+    + Σ(input_q * weight_q)
+    - input_zp * weight_sum
+    - weight_zp * input_sum
+    + K * input_zp * weight_zp
+```
+
+The result is sent through `requantize_reference()`, or through
+`requantize_scalar_wide()` for the eight channels marked by
+`use_scalar_fallback`. Fused ReLU clamps to the output tensor's zero point.
+
+The intended scalar-kernel decomposition is:
 
 ```c
 void conv2d_scalar(...);
@@ -735,39 +835,70 @@ void add_scalar(...);
 void relu_scalar(...);
 ```
 
-Required constraints:
+In the current implementation these operations are dispatched through static
+helpers in `resnet18_b0_executor.c`; some helpers are not yet exposed with the
+names above, and fused ReLU is applied inside the convolution and ADD paths
+instead of through a separate `relu_scalar()` function. The prototype list
+defines the desired decomposition, not a claim that each function is already
+a public API.
 
-- Static or global model and activation storage.
-- No `malloc`, file I/O, operating system, or `pk`.
-- No floating-point instructions.
-- Reusable activation buffers.
-- Explicit tensor dimensions and strides.
-- Exact integer quantization behavior.
+`qgemm.h` is included because it declares the shared fixed-point
+requantization functions used by the executor:
+`requantize_reference()` and `requantize_scalar_wide()`. The B0 convolution
+and fully connected loops do not currently call `qgemm_scalar()`; the include
+is not for GEMM itself. If the executor is later changed to an im2col+GEMM
+implementation, the same header will also provide the GEMM declarations.
 
-Use two or more *ping-pong activation buffers* where possible. Do not place the
-multi-megabyte model or full activation tensors on the stack.
+### 7.3 Build the B0 executable
 
-The complete ResNet-18 graph is approximately:
+Use the reproducible build script:
 
-```text
-input
-→ initial convolution
-→ ReLU
-→ max pool
-→ residual stages 1–4
-→ global average pool
-→ fully connected layer
-→ output
+```sh
+./scripts/build_resnet18_b0.sh
 ```
 
-Batch normalization should normally already be folded into the exported
-convolution weights and biases. Verify this from the graph and do not add a
-runtime floating-point batch-normalization operator.
+The script converts `model/test_vectors/resnet18/input_0.bin` into a temporary
+C header, compiles the startup, B0 main, B0 executor, and shared
+requantization implementation with:
+
+```text
+-march=rv64imc -mabi=lp64 -ffreestanding -fno-builtin
+-nostdlib -nostartfiles
+```
+
+The current executable links successfully for the target. Its approximate
+layout is 11.9 MiB of read-only model data and 4.9 MiB of static activation
+storage; this is why the activation buffers are not stack objects. The build
+does not require `pk`.
+
+### 7.4 Validation status and next step
+
+The generated metadata, executor, and target build are wired end to end, and
+the ELF runs under the modified Spike. The layer-by-layer comparison now uses
+all 86 preserved host tensors, skips only constant tensors that are not
+executor outputs, and compares the complete byte arrays. The comparison
+matches every nonconstant tensor, including the final output tensor 41:
+
+```text
+nonconstant tensors compared: 37
+mismatching tensors:          0
+maximum absolute difference:  0
+```
+
+Two bugs were fixed during this pass. The PAD implementation now interprets
+the FlatBuffer `[4, 2]` padding tensor as
+`[batch_before, batch_after, height_before, height_after, width_before,
+width_after, channel_before, channel_after]`, rather than treating its flat
+storage as four top/bottom/left/right values. The convolution input zero-point
+parameter is signed, preventing `-14` from being converted to
+`4294967282`. The final fully connected path also applies ReLU only when the
+operator metadata requests a fused activation.
 
 ## 8. Choose the convolution implementation
 
-Initially, implement convolution with `im2col` plus the existing GEMM path
-because it simplifies correctness reuse:
+The current B0 implementation uses direct scalar convolution. An alternative
+implementation to evaluate after correctness is established is `im2col` plus
+the existing GEMM path, because it may simplify reuse of `qgemm_scalar()`:
 
 ```text
 im2col(input) × weight_matrix = output_matrix
@@ -782,9 +913,9 @@ kernel_height * kernel_width * input_channels
 For later ResNet layers this is usually divisible by eight. The first
 convolution and any other non-divisible reduction must use a scalar tail.
 
-After correctness is established, consider a direct convolution kernel if the
-`im2col` buffer creates excessive memory traffic. The benchmark must include
-the chosen transformation and data movement if they are part of the workload.
+The direct kernel avoids materializing an `im2col` buffer, while the GEMM
+version may make the later X1/X2 integration simpler. The benchmark must
+include whichever transformation and data movement are actually used.
 
 ## 9. Implement residual addition and activation
 
@@ -895,8 +1026,8 @@ riscv64-unknown-elf-gcc \
     -Wall -Wextra -Werror \
     -Isrc/kernels -Imodel/exported/resnet18 \
     src/benchmarks/startup.S \
-    src/benchmarks/resnet18_main.c \
-    src/kernels/resnet18_ops.c \
+    src/benchmarks/resnet18_b0_main.c \
+    src/benchmarks/resnet18_b0_executor.c \
     src/kernels/qgemm.c \
     -T src/benchmarks/linker.ld \
     -o build/resnet18_b0.elf
