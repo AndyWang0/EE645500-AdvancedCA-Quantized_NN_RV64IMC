@@ -25,6 +25,17 @@ SECTIONS
         *(.srodata*)
     } > RAM
 
+    .tohost : ALIGN(8) {
+        __tohost_start = .;
+        tohost = .;
+        LONG(0);
+        LONG(0);
+        fromhost = .;
+        LONG(0);
+        LONG(0);
+        __tohost_end = .;
+    } > RAM
+
     .bss (NOLOAD) : {
         __bss_start = .;
         *(.bss*)

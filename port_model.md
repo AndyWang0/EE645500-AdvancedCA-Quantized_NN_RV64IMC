@@ -849,7 +849,44 @@ and fully connected loops do not currently call `qgemm_scalar()`; the include
 is not for GEMM itself. If the executor is later changed to an im2col+GEMM
 implementation, the same header will also provide the GEMM declarations.
 
-### 7.3 Build the B0 executable
+### 7.3 Reproduce and validate the B0 implementation
+
+Run the host reference first. This regenerates the canonical input, final
+output, preserved intermediate tensors, and validation metadata:
+
+```sh
+PYTHONPATH="$PWD" .venv/bin/python scripts/validate_litert_model.py \
+  --model model/source/resnet18/resnet18_int8_channelwise.tflite \
+  --out-dir model/test_vectors/resnet18 \
+  --debug-dir model/test_vectors/host_validation/intermediate
+```
+
+Build and run the native scalar B0 executor. This creates
+`build/resnet18_b0_tensors/tensor_<id>.bin` and a matching metadata file:
+
+```sh
+./scripts/build_resnet18_b0_host_dump.sh
+```
+
+Compare all tensors produced by B0 against the LiteRT reference:
+
+```sh
+.venv/bin/python scripts/compare_resnet18.py \
+  --host-dir model/test_vectors/resnet18 \
+  --ported-dir build/resnet18_b0_tensors
+```
+
+The expected result is:
+
+```text
+Compared 38 tensors; mismatching tensors: 0
+```
+
+This native comparison must pass before the target build is attempted. It
+isolates graph, layout, and quantization errors from RISC-V build or Spike
+problems.
+
+### 7.4 Build the B0 executable for RV64IMC
 
 Use the reproducible build script:
 
@@ -871,19 +908,129 @@ layout is 11.9 MiB of read-only model data and 4.9 MiB of static activation
 storage; this is why the activation buffers are not stack objects. The build
 does not require `pk`.
 
-### 7.4 Validation status and next step
+Inspect the target ELF and verify its sections and ISA:
 
-The generated metadata, executor, and target build are wired end to end, and
-the ELF runs under the modified Spike. The layer-by-layer comparison now uses
-all 86 preserved host tensors, skips only constant tensors that are not
-executor outputs, and compares the complete byte arrays. The comparison
-matches every nonconstant tensor, including the final output tensor 41:
+```sh
+riscv64-unknown-elf-size -A build/resnet18_b0.elf
+riscv64-unknown-elf-objdump -d build/resnet18_b0.elf \
+  > build/resnet18_b0.disassembly
+```
+
+The disassembly should contain RV64IMC code and no floating-point or vector
+instructions.
+
+### 7.5 Validate the complete B0 model under Spike
+
+The validation build executes the complete 37-operator model before comparing
+any tensor. It does not use `pk`, an operating system, a file system, or an
+instruction trace. The input and host reference tensors are compiled into
+static headers:
+
+```sh
+python3 scripts/make_input_header.py \
+  model/test_vectors/resnet18/input_0.bin build/resnet18_input.h
+python3 scripts/make_tensor_reference_header.py \
+  model/test_vectors/resnet18/validation_metadata.json \
+  build/resnet18_reference_tensors.h
+```
+
+`resnet18_validation_main.c` runs the same executor and compares every
+available nonconstant tensor against its compiled-in LiteRT reference after
+inference completes. Constant tensors and tensors without preserved host
+snapshots are skipped.
+
+Build and run the complete target-side validation with:
+
+```sh
+./scripts/validate_resnet18_b0_spike.sh
+```
+
+The script compiles `build/resnet18_b0_validation.elf` and runs it under the
+modified Spike without `-l` and without `--instructions` by default. Therefore
+the entire model is allowed to execute. The timeout is only a safety bound:
 
 ```text
-nonconstant tensors compared: 37
-mismatching tensors:          0
-maximum absolute difference:  0
+SPIKE_INSTRUCTIONS=0
+SPIKE_TIMEOUT=1800
 ```
+
+The limit can be enabled for an intentionally bounded diagnostic run, but it
+must not be used for the normal complete-model validation:
+
+```sh
+SPIKE_INSTRUCTIONS=5000000000 SPIKE_TIMEOUT=1800 \
+  ./scripts/validate_resnet18_b0_spike.sh
+```
+
+### 7.6 Fast `tohost` status protocol
+
+The linker provides globally visible `tohost` and `fromhost` symbols in an
+aligned `.tohost` section. The startup code clears both symbols. The
+validation program uses the Spike HTIF protocol:
+
+- A successful validation performs a proxy `exit(0)` request through `tohost`.
+- A failed validation writes a diagnostic line through a proxy `write(1,...)`
+  request, then writes a small failure status to `tohost`.
+- No `c.ebreak`, PC marker decoding, instruction log, or tensor dump is used.
+
+The failure status is:
+
+```text
+tohost = ((2 + tensor_id) << 1) | 1
+```
+
+Spike reports the corresponding failure code and the script returns nonzero.
+The low payload values are intentionally used here because a raw `tohost = 1`
+is interpreted as a proxy syscall request by Spike rather than as a clean
+validation exit.
+
+### 7.7 Detailed mismatch diagnostics
+
+On the first mismatching tensor, the target stores:
+
+```c
+resnet18_validation_tensor
+resnet18_validation_mismatches
+resnet18_validation_first_index
+resnet18_validation_expected
+resnet18_validation_actual
+```
+
+It also writes one machine-readable line to Spike stdout:
+
+```text
+RESNET18_FAIL tensor=0x00000000 mismatches=0x0000c3fe \
+first_index=0x00000000 expected=0xee actual=0x00
+```
+
+The validation script preserves this output in:
+
+```text
+results/raw/resnet18_b0_validation.stdout
+```
+
+and prints it directly on failure. Decode the fields as follows:
+
+1. `tensor` is the first mismatching tensor ID in graph order.
+2. `mismatches` is the total number of differing INT8 elements in that tensor.
+3. `first_index` is the first differing flattened element index.
+4. `expected` is the LiteRT reference INT8 value.
+5. `actual` is the RV64 executor INT8 value.
+
+The corresponding stderr file,
+`results/raw/resnet18_b0_validation.stderr`, contains Spike's HTIF status
+message. The volatile symbols remain available for debugger-based inspection
+when a lower-level investigation is needed:
+
+```sh
+riscv64-unknown-elf-nm -n build/resnet18_b0_validation.elf | \
+  grep resnet18_validation_
+```
+
+This workflow completes the full inference first and reports only after the
+comparison begins. The current run reports the first mismatch without a trace;
+for example, tensor 0 can be investigated immediately from the five fields
+above. The same protocol can be reused unchanged for X1 and X2 validation.
 
 Two bugs were fixed during this pass. The PAD implementation now interprets
 the FlatBuffer `[4, 2]` padding tensor as
@@ -1058,8 +1205,10 @@ Use the Spike executable built from the `midterm-custom-isa` branch:
 ```
 
 Run the same input and model under B0, X1, and X2. The bare-metal program
-must write a deterministic pass/fail result and enter the normal pass loop.
-Failures must enter the existing `c.ebreak` failure loop.
+must write a deterministic pass/fail result and enter the normal terminal
+loop. The functional validation build uses the `tohost` protocol described in
+Section 7; performance-only benchmark harnesses may use their existing
+terminal-loop convention.
 
 Use `benchmark_start` and `benchmark_end` symbols around the model inference
 call. Exclude startup, reference generation, output comparison, and terminal
