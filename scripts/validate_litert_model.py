@@ -24,6 +24,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--out-dir", type=Path, required=True)
+    parser.add_argument(
+        "--debug-dir",
+        type=Path,
+        help="Directory for optional intermediate tensor snapshots",
+    )
     parser.add_argument("--seed", type=int, default=20261104)
     args = parser.parse_args()
 
@@ -57,7 +62,7 @@ def main() -> None:
     input_value.tofile(input_path)
     output_value.tofile(output_path)
 
-    intermediate_dir = args.out_dir / "intermediate"
+    intermediate_dir = args.debug_dir or (args.out_dir / "intermediate")
     intermediate_dir.mkdir(exist_ok=True)
     tensor_records = []
     available_tensor_count = 0
@@ -83,7 +88,7 @@ def main() -> None:
                 "index": index,
                 "name": detail["name"],
                 "available": True,
-                "file": str(path.relative_to(args.out_dir)),
+                "file": str(path),
                 "stats": tensor_stats(value),
             }
         )

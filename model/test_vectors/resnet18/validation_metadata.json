@@ -1,0 +1,1174 @@
+{
+  "model": "model/source/resnet18/resnet18_int8_channelwise.tflite",
+  "seed": 20261104,
+  "input": {
+    "index": 85,
+    "name": "g0::x",
+    "shape": [
+      1,
+      3,
+      224,
+      224
+    ],
+    "dtype": "int8",
+    "quantization": {
+      "scale": 0.01865844801068306,
+      "zero_point": -14
+    },
+    "file": "input_0.bin",
+    "stats": {
+      "shape": [
+        1,
+        3,
+        224,
+        224
+      ],
+      "dtype": "int8",
+      "bytes": 150528,
+      "min": -128,
+      "max": 127,
+      "sum": -34093
+    }
+  },
+  "output": {
+    "index": 41,
+    "name": "g0::linear",
+    "shape": [
+      1,
+      1000
+    ],
+    "dtype": "int8",
+    "quantization": {
+      "scale": 0.1705460548400879,
+      "zero_point": -61
+    },
+    "file": "reference_output_0.bin",
+    "stats": {
+      "shape": [
+        1,
+        1000
+      ],
+      "dtype": "int8",
+      "bytes": 1000,
+      "min": -88,
+      "max": -21,
+      "sum": -61014
+    },
+    "predicted_class": 107
+  },
+  "intermediate_tensor_count": 86,
+  "intermediates": [
+    {
+      "index": 0,
+      "name": "g0::batch_norm_11",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 1,
+      "name": "g0::batch_norm_12",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 2,
+      "name": "g0::batch_norm_14",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 3,
+      "name": "g0::batch_norm_16",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 4,
+      "name": "g0::batch_norm_17",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 5,
+      "name": "g0::batch_norm_19",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 6,
+      "name": "g0::batch_norm_2",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 7,
+      "name": "g0::batch_norm_4",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 8,
+      "name": "g0::batch_norm_6",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 9,
+      "name": "g0::batch_norm_7",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 10,
+      "name": "g0::batch_norm_9",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 11,
+      "name": "g0::__native_zero_bias_op103",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_11.bin",
+      "stats": {
+        "shape": [
+          512
+        ],
+        "dtype": "int32",
+        "bytes": 2048,
+        "min": -35185,
+        "max": 35532,
+        "sum": 1997675
+      }
+    },
+    {
+      "index": 12,
+      "name": "g0::__native_zero_bias_op109",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_12.bin",
+      "stats": {
+        "shape": [
+          512
+        ],
+        "dtype": "int32",
+        "bytes": 2048,
+        "min": -53937,
+        "max": 35639,
+        "sum": 4234870
+      }
+    },
+    {
+      "index": 13,
+      "name": "g0::__native_zero_bias_op114",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_13.bin",
+      "stats": {
+        "shape": [
+          512
+        ],
+        "dtype": "int32",
+        "bytes": 2048,
+        "min": -22169,
+        "max": 18360,
+        "sum": -921720
+      }
+    },
+    {
+      "index": 14,
+      "name": "g0::__native_zero_bias_op12",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_14.bin",
+      "stats": {
+        "shape": [
+          64
+        ],
+        "dtype": "int32",
+        "bytes": 256,
+        "min": -43379,
+        "max": 34005,
+        "sum": 737532
+      }
+    },
+    {
+      "index": 15,
+      "name": "g0::__native_zero_bias_op121",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_15.bin",
+      "stats": {
+        "shape": [
+          512
+        ],
+        "dtype": "int32",
+        "bytes": 2048,
+        "min": -42149,
+        "max": 45971,
+        "sum": 7151414
+      }
+    },
+    {
+      "index": 16,
+      "name": "g0::__native_zero_bias_op127",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_16.bin",
+      "stats": {
+        "shape": [
+          512
+        ],
+        "dtype": "int32",
+        "bytes": 2048,
+        "min": -3965,
+        "max": 14598,
+        "sum": 2898010
+      }
+    },
+    {
+      "index": 17,
+      "name": "g0::__native_zero_bias_op18",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_17.bin",
+      "stats": {
+        "shape": [
+          64
+        ],
+        "dtype": "int32",
+        "bytes": 256,
+        "min": -50678,
+        "max": 22579,
+        "sum": 71109
+      }
+    },
+    {
+      "index": 18,
+      "name": "g0::__native_zero_bias_op2",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_18.bin",
+      "stats": {
+        "shape": [
+          64
+        ],
+        "dtype": "int32",
+        "bytes": 256,
+        "min": -54489108,
+        "max": 407618,
+        "sum": -77915063
+      }
+    },
+    {
+      "index": 19,
+      "name": "g0::__native_zero_bias_op25",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_19.bin",
+      "stats": {
+        "shape": [
+          64
+        ],
+        "dtype": "int32",
+        "bytes": 256,
+        "min": -36557,
+        "max": 54588,
+        "sum": 598218
+      }
+    },
+    {
+      "index": 20,
+      "name": "g0::__native_zero_bias_op31",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_20.bin",
+      "stats": {
+        "shape": [
+          64
+        ],
+        "dtype": "int32",
+        "bytes": 256,
+        "min": -37988,
+        "max": 34203,
+        "sum": 72298
+      }
+    },
+    {
+      "index": 21,
+      "name": "g0::__native_zero_bias_op39",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_21.bin",
+      "stats": {
+        "shape": [
+          128
+        ],
+        "dtype": "int32",
+        "bytes": 512,
+        "min": -23781,
+        "max": 41484,
+        "sum": 338847
+      }
+    },
+    {
+      "index": 22,
+      "name": "g0::__native_zero_bias_op45",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_22.bin",
+      "stats": {
+        "shape": [
+          128
+        ],
+        "dtype": "int32",
+        "bytes": 512,
+        "min": -29596,
+        "max": 79825,
+        "sum": 1322637
+      }
+    },
+    {
+      "index": 23,
+      "name": "g0::__native_zero_bias_op50",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_23.bin",
+      "stats": {
+        "shape": [
+          128
+        ],
+        "dtype": "int32",
+        "bytes": 512,
+        "min": -30800,
+        "max": 13112,
+        "sum": 72382
+      }
+    },
+    {
+      "index": 24,
+      "name": "g0::__native_zero_bias_op57",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_24.bin",
+      "stats": {
+        "shape": [
+          128
+        ],
+        "dtype": "int32",
+        "bytes": 512,
+        "min": -28350,
+        "max": 22311,
+        "sum": -1265
+      }
+    },
+    {
+      "index": 25,
+      "name": "g0::__native_zero_bias_op63",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_25.bin",
+      "stats": {
+        "shape": [
+          128
+        ],
+        "dtype": "int32",
+        "bytes": 512,
+        "min": -27991,
+        "max": 25380,
+        "sum": -209326
+      }
+    },
+    {
+      "index": 26,
+      "name": "g0::__native_zero_bias_op71",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_26.bin",
+      "stats": {
+        "shape": [
+          256
+        ],
+        "dtype": "int32",
+        "bytes": 1024,
+        "min": -33750,
+        "max": 44269,
+        "sum": 1151594
+      }
+    },
+    {
+      "index": 27,
+      "name": "g0::__native_zero_bias_op77",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_27.bin",
+      "stats": {
+        "shape": [
+          256
+        ],
+        "dtype": "int32",
+        "bytes": 1024,
+        "min": -28351,
+        "max": 51785,
+        "sum": 1772667
+      }
+    },
+    {
+      "index": 28,
+      "name": "g0::__native_zero_bias_op82",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_28.bin",
+      "stats": {
+        "shape": [
+          256
+        ],
+        "dtype": "int32",
+        "bytes": 1024,
+        "min": -18817,
+        "max": 28173,
+        "sum": 310971
+      }
+    },
+    {
+      "index": 29,
+      "name": "g0::__native_zero_bias_op89",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_29.bin",
+      "stats": {
+        "shape": [
+          256
+        ],
+        "dtype": "int32",
+        "bytes": 1024,
+        "min": -93843,
+        "max": 56018,
+        "sum": 1060273
+      }
+    },
+    {
+      "index": 30,
+      "name": "g0::__native_zero_bias_op95",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_30.bin",
+      "stats": {
+        "shape": [
+          256
+        ],
+        "dtype": "int32",
+        "bytes": 1024,
+        "min": -47304,
+        "max": 33986,
+        "sum": -4649
+      }
+    },
+    {
+      "index": 31,
+      "name": "g0::__perm_conv2d_native_nchw_to_nhwc",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_31.bin",
+      "stats": {
+        "shape": [
+          4
+        ],
+        "dtype": "int32",
+        "bytes": 16,
+        "min": 0,
+        "max": 3,
+        "sum": 6
+      }
+    },
+    {
+      "index": 32,
+      "name": "g0::conv2d_10_pad",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 33,
+      "name": "g0::conv2d_15_pad",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 34,
+      "name": "g0::conv2d_5_pad",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 35,
+      "name": "g0::conv2d_pad",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 36,
+      "name": "g0::__pad_paddings_conv2d_conv2d_pad",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_36.bin",
+      "stats": {
+        "shape": [
+          4,
+          2
+        ],
+        "dtype": "int32",
+        "bytes": 32,
+        "min": 0,
+        "max": 3,
+        "sum": 12
+      }
+    },
+    {
+      "index": 37,
+      "name": "g0::__pad_paddings_max_pool2d_pad",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_37.bin",
+      "stats": {
+        "shape": [
+          4,
+          2
+        ],
+        "dtype": "int32",
+        "bytes": 32,
+        "min": 0,
+        "max": 1,
+        "sum": 4
+      }
+    },
+    {
+      "index": 38,
+      "name": "g0::__pad_paddings_conv2d_5_conv2d_pad",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_38.bin",
+      "stats": {
+        "shape": [
+          4,
+          2
+        ],
+        "dtype": "int32",
+        "bytes": 32,
+        "min": 0,
+        "max": 1,
+        "sum": 4
+      }
+    },
+    {
+      "index": 39,
+      "name": "g0::__pad_paddings_conv2d_10_conv2d_pad",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_39.bin",
+      "stats": {
+        "shape": [
+          4,
+          2
+        ],
+        "dtype": "int32",
+        "bytes": 32,
+        "min": 0,
+        "max": 1,
+        "sum": 4
+      }
+    },
+    {
+      "index": 40,
+      "name": "g0::__pad_paddings_conv2d_15_conv2d_pad",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_40.bin",
+      "stats": {
+        "shape": [
+          4,
+          2
+        ],
+        "dtype": "int32",
+        "bytes": 32,
+        "min": 0,
+        "max": 1,
+        "sum": 4
+      }
+    },
+    {
+      "index": 41,
+      "name": "g0::linear",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_41.bin",
+      "stats": {
+        "shape": [
+          1,
+          1000
+        ],
+        "dtype": "int8",
+        "bytes": 1000,
+        "min": -88,
+        "max": -21,
+        "sum": -61014
+      }
+    },
+    {
+      "index": 42,
+      "name": "g0::max_pool2d_padded",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 43,
+      "name": "g0::p_conv1_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_43.bin",
+      "stats": {
+        "shape": [
+          64,
+          7,
+          7,
+          3
+        ],
+        "dtype": "int8",
+        "bytes": 9408,
+        "min": -127,
+        "max": 127,
+        "sum": 1093
+      }
+    },
+    {
+      "index": 44,
+      "name": "g0::p_fc_bias",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_44.bin",
+      "stats": {
+        "shape": [
+          1000
+        ],
+        "dtype": "int32",
+        "bytes": 4000,
+        "min": -112,
+        "max": 133,
+        "sum": 533
+      }
+    },
+    {
+      "index": 45,
+      "name": "g0::p_fc_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_45.bin",
+      "stats": {
+        "shape": [
+          1000,
+          512
+        ],
+        "dtype": "int8",
+        "bytes": 512000,
+        "min": -127,
+        "max": 127,
+        "sum": -241
+      }
+    },
+    {
+      "index": 46,
+      "name": "g0::p_layer1_0_conv1_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_46.bin",
+      "stats": {
+        "shape": [
+          64,
+          3,
+          3,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 36864,
+        "min": -127,
+        "max": 127,
+        "sum": -38189
+      }
+    },
+    {
+      "index": 47,
+      "name": "g0::p_layer1_0_conv2_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_47.bin",
+      "stats": {
+        "shape": [
+          64,
+          3,
+          3,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 36864,
+        "min": -127,
+        "max": 127,
+        "sum": -10615
+      }
+    },
+    {
+      "index": 48,
+      "name": "g0::p_layer1_1_conv1_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_48.bin",
+      "stats": {
+        "shape": [
+          64,
+          3,
+          3,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 36864,
+        "min": -127,
+        "max": 127,
+        "sum": -44541
+      }
+    },
+    {
+      "index": 49,
+      "name": "g0::p_layer1_1_conv2_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_49.bin",
+      "stats": {
+        "shape": [
+          64,
+          3,
+          3,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 36864,
+        "min": -127,
+        "max": 127,
+        "sum": -22690
+      }
+    },
+    {
+      "index": 50,
+      "name": "g0::p_layer2_0_conv1_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_50.bin",
+      "stats": {
+        "shape": [
+          128,
+          3,
+          3,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 73728,
+        "min": -127,
+        "max": 127,
+        "sum": -66491
+      }
+    },
+    {
+      "index": 51,
+      "name": "g0::p_layer2_0_conv2_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_51.bin",
+      "stats": {
+        "shape": [
+          128,
+          3,
+          3,
+          128
+        ],
+        "dtype": "int8",
+        "bytes": 147456,
+        "min": -127,
+        "max": 127,
+        "sum": -124751
+      }
+    },
+    {
+      "index": 52,
+      "name": "g0::p_layer2_0_downsample_0_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_52.bin",
+      "stats": {
+        "shape": [
+          128,
+          1,
+          1,
+          64
+        ],
+        "dtype": "int8",
+        "bytes": 8192,
+        "min": -127,
+        "max": 127,
+        "sum": -12122
+      }
+    },
+    {
+      "index": 53,
+      "name": "g0::p_layer2_1_conv1_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_53.bin",
+      "stats": {
+        "shape": [
+          128,
+          3,
+          3,
+          128
+        ],
+        "dtype": "int8",
+        "bytes": 147456,
+        "min": -127,
+        "max": 127,
+        "sum": -149454
+      }
+    },
+    {
+      "index": 54,
+      "name": "g0::p_layer2_1_conv2_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_54.bin",
+      "stats": {
+        "shape": [
+          128,
+          3,
+          3,
+          128
+        ],
+        "dtype": "int8",
+        "bytes": 147456,
+        "min": -127,
+        "max": 127,
+        "sum": -156608
+      }
+    },
+    {
+      "index": 55,
+      "name": "g0::p_layer3_0_conv1_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_55.bin",
+      "stats": {
+        "shape": [
+          256,
+          3,
+          3,
+          128
+        ],
+        "dtype": "int8",
+        "bytes": 294912,
+        "min": -127,
+        "max": 127,
+        "sum": -336429
+      }
+    },
+    {
+      "index": 56,
+      "name": "g0::p_layer3_0_conv2_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_56.bin",
+      "stats": {
+        "shape": [
+          256,
+          3,
+          3,
+          256
+        ],
+        "dtype": "int8",
+        "bytes": 589824,
+        "min": -127,
+        "max": 127,
+        "sum": -409216
+      }
+    },
+    {
+      "index": 57,
+      "name": "g0::p_layer3_0_downsample_0_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_57.bin",
+      "stats": {
+        "shape": [
+          256,
+          1,
+          1,
+          128
+        ],
+        "dtype": "int8",
+        "bytes": 32768,
+        "min": -127,
+        "max": 127,
+        "sum": -69077
+      }
+    },
+    {
+      "index": 58,
+      "name": "g0::p_layer3_1_conv1_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_58.bin",
+      "stats": {
+        "shape": [
+          256,
+          3,
+          3,
+          256
+        ],
+        "dtype": "int8",
+        "bytes": 589824,
+        "min": -127,
+        "max": 127,
+        "sum": -1025964
+      }
+    },
+    {
+      "index": 59,
+      "name": "g0::p_layer3_1_conv2_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_59.bin",
+      "stats": {
+        "shape": [
+          256,
+          3,
+          3,
+          256
+        ],
+        "dtype": "int8",
+        "bytes": 589824,
+        "min": -127,
+        "max": 127,
+        "sum": -998098
+      }
+    },
+    {
+      "index": 60,
+      "name": "g0::p_layer4_0_conv1_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_60.bin",
+      "stats": {
+        "shape": [
+          512,
+          3,
+          3,
+          256
+        ],
+        "dtype": "int8",
+        "bytes": 1179648,
+        "min": -127,
+        "max": 127,
+        "sum": -2379877
+      }
+    },
+    {
+      "index": 61,
+      "name": "g0::p_layer4_0_conv2_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_61.bin",
+      "stats": {
+        "shape": [
+          512,
+          3,
+          3,
+          512
+        ],
+        "dtype": "int8",
+        "bytes": 2359296,
+        "min": -127,
+        "max": 127,
+        "sum": -4033075
+      }
+    },
+    {
+      "index": 62,
+      "name": "g0::p_layer4_0_downsample_0_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_62.bin",
+      "stats": {
+        "shape": [
+          512,
+          1,
+          1,
+          256
+        ],
+        "dtype": "int8",
+        "bytes": 131072,
+        "min": -127,
+        "max": 127,
+        "sum": -123233
+      }
+    },
+    {
+      "index": 63,
+      "name": "g0::p_layer4_1_conv1_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_63.bin",
+      "stats": {
+        "shape": [
+          512,
+          3,
+          3,
+          512
+        ],
+        "dtype": "int8",
+        "bytes": 2359296,
+        "min": -127,
+        "max": 127,
+        "sum": -7727459
+      }
+    },
+    {
+      "index": 64,
+      "name": "g0::p_layer4_1_conv2_weight",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_64.bin",
+      "stats": {
+        "shape": [
+          512,
+          3,
+          3,
+          512
+        ],
+        "dtype": "int8",
+        "bytes": 2359296,
+        "min": -127,
+        "max": 127,
+        "sum": -473153
+      }
+    },
+    {
+      "index": 65,
+      "name": "g0::relu_",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 66,
+      "name": "g0::relu__1",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 67,
+      "name": "g0::relu__10",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 68,
+      "name": "g0::relu__11",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 69,
+      "name": "g0::relu__12",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 70,
+      "name": "g0::relu__13",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 71,
+      "name": "g0::relu__14",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 72,
+      "name": "g0::relu__15",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 73,
+      "name": "g0::relu__16",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_73.bin",
+      "stats": {
+        "shape": [
+          1,
+          7,
+          7,
+          512
+        ],
+        "dtype": "int8",
+        "bytes": 25088,
+        "min": -128,
+        "max": -21,
+        "sum": -3087528
+      }
+    },
+    {
+      "index": 74,
+      "name": "g0::relu__2",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 75,
+      "name": "g0::relu__3",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 76,
+      "name": "g0::relu__4",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 77,
+      "name": "g0::relu__5",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 78,
+      "name": "g0::relu__6",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 79,
+      "name": "g0::relu__7",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 80,
+      "name": "g0::relu__8",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 81,
+      "name": "g0::relu__9",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 82,
+      "name": "g0::adaptive_avg_pool2d_native_nhwc",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_82.bin",
+      "stats": {
+        "shape": [
+          1,
+          1,
+          1,
+          512
+        ],
+        "dtype": "int8",
+        "bytes": 512,
+        "min": -128,
+        "max": -102,
+        "sum": -64336
+      }
+    },
+    {
+      "index": 83,
+      "name": "g0::max_pool2d_native_nhwc",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 84,
+      "name": "g0::layout.transpose",
+      "available": false,
+      "reason": "Tensor data is null. Run allocate_tensors() first"
+    },
+    {
+      "index": 85,
+      "name": "g0::x",
+      "available": true,
+      "file": "model/test_vectors/host_validation/intermediate/tensor_85.bin",
+      "stats": {
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ],
+        "dtype": "int8",
+        "bytes": 150528,
+        "min": -128,
+        "max": 127,
+        "sum": -34093
+      }
+    }
+  ]
+}

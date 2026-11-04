@@ -386,7 +386,8 @@ Run the deterministic validation with:
 PYTHONPATH="$PWD" \
   .venv/bin/python scripts/validate_litert_model.py \
     --model model/source/resnet18/resnet18_int8_channelwise.tflite \
-    --out-dir model/test_vectors/host_validation
+    --out-dir model/test_vectors/host_validation \
+    --debug-dir model/test_vectors/host_validation/intermediate
 ```
 
 The default seed is `20261104`; pass `--seed` to create a different
@@ -421,29 +422,69 @@ The host reference is the authority for validating the exported C graph.
 
 ## 5. Export static C model data
 
-Create `scripts/export_litert_model.py`. It should read the FlatBuffer and
-generate:
+### Purpose
+
+The LiteRT FlatBuffer is not a bare-metal executable and should not be parsed
+at runtime for this fixed workload. This step converts its graph metadata,
+constant tensors, and quantization parameters into ordinary C headers that
+can be compiled with `riscv64-unknown-elf-gcc`. The generated files make the
+model self-contained while preserving the original tensor IDs and operator
+order for the later static executor.
+
+### Implementation
+
+[`scripts/export_litert_model.py`](scripts/export_litert_model.py) reads the
+FlatBuffer with the generated LiteRT schema, extracts each non-empty constant
+buffer, preserves its declared scalar type and shape, and emits:
 
 ```text
 model/exported/
-├── resnet18_graph.h
-├── resnet18_weights.h
-├── resnet18_biases.h
-├── resnet18_shapes.h
-├── resnet18_quant_params.h
-└── model_metadata.json
+└── resnet18/
+    ├── resnet18_graph.h
+    ├── resnet18_weights.h
+    ├── resnet18_biases.h
+    ├── resnet18_shapes.h
+    ├── resnet18_quant_params.h
+    └── model_metadata.json
 ```
 
-Also generate deterministic test vectors:
+Run it with:
+
+```sh
+PYTHONPATH="$PWD" \
+  .venv/bin/python scripts/export_litert_model.py \
+    --model model/source/resnet18/resnet18_int8_channelwise.tflite \
+    --out-dir model/exported/resnet18 \
+    --test-dir model/test_vectors/resnet18
+```
+
+The exporter produces aligned read-only arrays. INT8 constants are placed in
+`resnet18_weights.h`, INT32 constants in `resnet18_biases.h`, tensor shapes in
+`resnet18_shapes.h`, and tensor scales/zero points plus representable fixed
+point parameters in `resnet18_quant_params.h`. `resnet18_graph.h` preserves
+operator input/output IDs and the graph operation count. The JSON metadata
+keeps the complete tensor and operator records for auditing.
+
+The `--test-dir` option copies the compact host reference vectors from the
+host-validation directory into the model-specific test-vector directory when
+they already exist:
 
 ```text
 model/test_vectors/
-├── input_0.bin
-├── reference_output_0.bin
-└── intermediate_*.bin
+├── resnet18/
+│   ├── input_0.bin
+│   ├── reference_output_0.bin
+│   └── validation_metadata.json
+└── host_validation/
+    └── intermediate/
 ```
 
-The exported graph metadata must include, for every operator:
+The canonical input/reference pair is kept beside the model name because the
+later bare-metal runner must load exactly those bytes without invoking Python
+or LiteRT. The intermediate directory is only a host-side debugging artifact
+and is kept separate from the compact fixtures.
+
+The exported graph metadata includes, for every operator:
 
 - Input and output tensor IDs.
 - Weight and bias tensor IDs.
@@ -454,9 +495,20 @@ The exported graph metadata must include, for every operator:
 - Per-channel weight scales and zero points.
 - Fixed-point multiplier and shift used by the target executor.
 
-Store weights as aligned signed `int8_t` arrays and biases in the type used by
-the model, normally `int32_t`. Use read-only model-data sections where
-possible.
+The current export generated 86 tensor records and 37 operator records. The
+large generated ResNet headers are intentionally not Git artifacts; they can
+be recreated from the frozen model by rerunning the command. The synthetic
+headers remain in `model/exported/` for the existing GEMM bring-up tests.
+
+Fixed-point conversion is recorded but not silently forced. Twenty of the 21
+convolution/fully-connected operators have channel multipliers representable
+by the current `xqrequant8` fields. The first convolution has eight extremely
+small channel multipliers outside the configured shift range. Their channel
+indices are recorded in `unrepresentable_channels`, and the exporter also
+emits exact wider-range `fallback_multipliers`, `fallback_shifts`, and
+`use_scalar_fallback` arrays for Section 6.
+This prevents the exporter from silently changing that model channel's
+quantization.
 
 Example generated declarations:
 
@@ -523,10 +575,58 @@ where `M` and `S` are the multiplier and shift fields consumed by
 `xqrequant8`. Preserve the model's output zero point and signed INT8
 saturation range.
 
-The exporter must reject a multiplier or shift that cannot be represented by
-the instruction format. It must not silently clamp parameters. Use a scalar
-fallback or revise the instruction format if an actual model layer requires a
-larger range.
+The current instruction supports shifts from 0 through 63. For a channel
+whose exact multiplier needs a larger shift, the exporter emits a wider
+fallback pair and a `use_scalar_fallback` flag. The kernel dispatches those
+channels to an integer-only scalar path:
+
+```c
+if (use_scalar_fallback[channel]) {
+    output = requantize_wide(
+        accumulator,
+        fallback_multipliers[channel],
+        fallback_shifts[channel],
+        output_zero_point);
+} else {
+    output = xqrequant8(
+        accumulator,
+        pack_requant_params(
+            multipliers[channel],
+            shifts[channel],
+            output_zero_point));
+}
+```
+
+`requantize_wide` must use a signed wide intermediate, round to nearest with
+ties away from zero, add the output zero point, and saturate to `[-128, 127]`.
+It must preserve the exact fallback multiplier and shift rather than clamp
+them to the custom-instruction range. This keeps the model numerically
+correct while limiting the scalar fallback to the eight exceptional channels
+in the first convolution.
+
+The shared C reference implementation exposes this fallback behavior as
+`requantize_scalar_wide()`. The existing
+`requantize_reference()` calls the same implementation for compatibility, so
+the scalar model path and exceptional-channel fallback cannot silently acquire
+different rounding or saturation rules.
+
+An alternative implementation option is to expand `xqrequant8` so that it can
+represent the full fixed-point range required by the model. For example, a
+future revision could provide a wider shift field, a wider multiplier format,
+or a second requantization encoding with the same rounding, zero-point, and
+saturation semantics. This would allow the exceptional channels to remain on
+the custom-instruction path and may reduce scalar dispatch overhead. It would
+also require a new encoding decision and corresponding updates to the Spike
+implementation, inline-assembly wrapper, generated parameter format, tests,
+and benchmark results. The current design therefore keeps the existing
+`xqrequant8` encoding as the baseline and uses the exact scalar fallback; an
+expanded-instruction variant can be evaluated later without changing the
+model-export correctness contract.
+
+The exporter must never silently clamp parameters. A scalar fallback is
+preferred here because only a small number of channels are affected; changing
+the ISA format would require revising the encoding, Spike implementation,
+assembly wrapper, tests, and existing measurements.
 
 Compare the rounding behavior with the LiteRT reference. The current ISA
 contract uses round-to-nearest, ties-away-from-zero, followed by zero-point
@@ -643,6 +743,14 @@ Load channel-specific multiplier, shift, and output zero-point parameters for
 each output channel. Use a scalar tail whenever the reduction length is not
 divisible by eight.
 
+For the current X2 baseline, dispatch the eight channels whose exact shift is
+outside the `xqrequant8` range to `requantize_scalar_wide()`. A future X2
+variant may instead use an expanded `xqrequant8` encoding with a wider shift or
+multiplier representation. Treat that as a separate ISA experiment: preserve
+the current instruction's numerical behavior, regenerate the encoding and
+Spike support, and compare its instruction count and model accuracy against
+the baseline X2 path.
+
 The custom paths must produce exactly the same output tensors as B0 for the
 same input and model parameters.
 
@@ -696,7 +804,7 @@ riscv64-unknown-elf-gcc \
     -nostdlib \
     -nostartfiles \
     -Wall -Wextra -Werror \
-    -Isrc/kernels -Imodel/exported \
+    -Isrc/kernels -Imodel/exported/resnet18 \
     src/benchmarks/startup.S \
     src/benchmarks/resnet18_main.c \
     src/kernels/resnet18_ops.c \
@@ -782,8 +890,8 @@ python3 scripts/inspect_litert_model.py \
     --model model/source/resnet18/resnet18_int8_channelwise.tflite
 python3 scripts/export_litert_model.py \
     --model model/source/resnet18/resnet18_int8_channelwise.tflite \
-    --out-dir model/exported \
-    --test-dir model/test_vectors
+    --out-dir model/exported/resnet18 \
+    --test-dir model/test_vectors/resnet18
 ./scripts/run_resnet18_benchmarks.sh
 ```
 

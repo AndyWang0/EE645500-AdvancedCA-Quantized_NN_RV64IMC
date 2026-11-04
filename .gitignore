@@ -6,3 +6,4 @@ build/
 .venv/
 *.tflite
 model/test_vectors/host_validation/intermediate/
+model/exported/resnet18/

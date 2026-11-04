@@ -37,4 +37,7 @@ void qgemm_x2(const int8_t *a, const int8_t *w, const int64_t *bias,
 int8_t requantize_reference(int64_t accumulator, int32_t multiplier,
                             uint8_t shift, int8_t zero_point);
 
+int8_t requantize_scalar_wide(int64_t accumulator, int32_t multiplier,
+                              uint8_t shift, int8_t zero_point);
+
 #endif

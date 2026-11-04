@@ -15,8 +15,8 @@ static int8_t clamp_int8(__int128 value)
     return (int8_t)value;
 }
 
-int8_t requantize_reference(int64_t accumulator, int32_t multiplier,
-                            uint8_t shift, int8_t zero_point)
+int8_t requantize_scalar_wide(int64_t accumulator, int32_t multiplier,
+                              uint8_t shift, int8_t zero_point)
 {
     __int128 product = (__int128)accumulator * (__int128)multiplier;
     __int128 scaled;
@@ -30,6 +30,12 @@ int8_t requantize_reference(int64_t accumulator, int32_t multiplier,
     }
 
     return clamp_int8(scaled + (__int128)zero_point);
+}
+
+int8_t requantize_reference(int64_t accumulator, int32_t multiplier,
+                            uint8_t shift, int8_t zero_point)
+{
+    return requantize_scalar_wide(accumulator, multiplier, shift, zero_point);
 }
 
 void qgemm_scalar(const int8_t *a, const int8_t *w, const int64_t *bias,
