@@ -373,11 +373,30 @@ def main() -> None:
             if not record["constant"]:
                 elements = math.prod(record["shape"]) if record["shape"] else 1
                 out.write(
-                    f"static int8_t resnet18_tensor_storage_{record['index']}[{elements}]"
+                    f"extern int8_t resnet18_tensor_storage_{record['index']}[{elements}]"
                     " __attribute__((aligned(8)));\n"
                 )
-        out.write(f"static const uint32_t resnet18_tensor_count = {len(tensor_records)};\n")
-        out.write("static resnet18_tensor_t resnet18_tensors[] = {\n")
+        out.write(f"extern const uint32_t resnet18_tensor_count;\n")
+        out.write("extern resnet18_tensor_t resnet18_tensors[];\n")
+        out.write(" \n")
+        out.write("extern const uint32_t resnet18_operator_count;\n")
+        for op in operators:
+            out.write(f"extern const int32_t resnet18_op_{op['index']}_inputs[];\n")
+            out.write(f"extern const int32_t resnet18_op_{op['index']}_outputs[];\n")
+        out.write("extern const resnet18_operator_t resnet18_operators[];\n")
+        out.write("\n#endif\n")
+
+    with (args.out_dir / "resnet18_graph.c").open("w", encoding="utf-8") as out:
+        out.write('#include "resnet18_graph.h"\n\n')
+        for record in tensor_records:
+            if not record["constant"]:
+                elements = math.prod(record["shape"]) if record["shape"] else 1
+                out.write(
+                    f"int8_t resnet18_tensor_storage_{record['index']}[{elements}]"
+                    " __attribute__((aligned(8)));\n"
+                )
+        out.write(f"const uint32_t resnet18_tensor_count = {len(tensor_records)};\n")
+        out.write("resnet18_tensor_t resnet18_tensors[] = {\n")
         type_ids = {"int8_t": 1, "int32_t": 2, "int64_t": 3, "uint8_t": 4, "uint32_t": 5, "bool": 6}
         for record in tensor_records:
             shape = record["shape"][:4] + [1] * (4 - len(record["shape"]))
@@ -397,13 +416,13 @@ def main() -> None:
                 "},\n"
             )
         out.write("};\n\n")
-        out.write(f"static const uint32_t resnet18_operator_count = {len(operators)};\n")
+        out.write(f"const uint32_t resnet18_operator_count = {len(operators)};\n")
         for op in operators:
             ins = ", ".join(str(x) for x in op["inputs"]) or "0"
             outs = ", ".join(str(x) for x in op["outputs"]) or "0"
-            out.write(f"static const int32_t resnet18_op_{op['index']}_inputs[] = {{{ins}}};\n")
-            out.write(f"static const int32_t resnet18_op_{op['index']}_outputs[] = {{{outs}}};\n")
-        out.write("static const resnet18_operator_t resnet18_operators[] = {\n")
+            out.write(f"const int32_t resnet18_op_{op['index']}_inputs[] = {{{ins}}};\n")
+            out.write(f"const int32_t resnet18_op_{op['index']}_outputs[] = {{{outs}}};\n")
+        out.write("const resnet18_operator_t resnet18_operators[] = {\n")
         kind_ids = {
             "ADD": 1, "AVERAGE_POOL_2D": 2, "CONV_2D": 3, "FULLY_CONNECTED": 4,
             "MAX_POOL_2D": 5, "PAD": 6, "TRANSPOSE": 7,
@@ -412,17 +431,20 @@ def main() -> None:
         padding_ids = {"VALID": 0, "SAME": 1}
         for op in operators:
             options = op["options"]
+            values = [
+                kind_ids[op["operator"]],
+                activation_ids.get(options.get("fused_activation", "NONE"), 0),
+                padding_ids.get(options.get("padding", "VALID"), 0),
+                len(op["inputs"]), len(op["outputs"]),
+                options.get("stride_h", 1), options.get("stride_w", 1),
+                options.get("filter_h", 0), options.get("filter_w", 0),
+            ]
             out.write(
-                f"    {{{kind_ids[op['operator']]}, "
-                f"{activation_ids.get(options.get('fused_activation', 'NONE'), 0)}, "
-                f"{padding_ids.get(options.get('padding', 'VALID'), 0)}, "
-                f"{len(op['inputs'])}, {len(op['outputs'])}, "
-                f"{options.get('stride_h', 1)}, {options.get('stride_w', 1)}, "
-                f"{options.get('filter_h', 0)}, {options.get('filter_w', 0)}, "
-                f"resnet18_op_{op['index']}_inputs, resnet18_op_{op['index']}_outputs}},\n"
+                "    {" + ", ".join(str(value) for value in values) +
+                f", resnet18_op_{op['index']}_inputs, "
+                f"resnet18_op_{op['index']}_outputs}},\n"
             )
-        out.write("};\n\n")
-        out.write("\n#endif\n")
+        out.write("};\n")
 
     metadata = {
         "model": str(args.model),

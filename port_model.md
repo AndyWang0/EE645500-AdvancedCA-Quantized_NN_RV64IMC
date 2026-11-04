@@ -760,11 +760,14 @@ The executor must satisfy these constraints:
 - Explicit tensor dimensions and strides.
 - Exact integer quantization behavior.
 
-The exporter generates `resnet18_graph.h` in
-`model/exported/resnet18/`. It contains static storage declarations for every
+The exporter generates `resnet18_graph.h` and `resnet18_graph.c` in
+`model/exported/resnet18/`. The header contains declarations for every
 nonconstant tensor, pointers to generated INT8 weights and INT32 biases,
 tensor ranks and dimensions, element counts, zero points, and operator
-metadata. This keeps model data in `.rodata` and activations in `.bss`.
+metadata; the C file owns the single shared tensor-storage and graph-table
+definitions. This prevents separate translation units from accidentally
+comparing or updating different copies, and keeps model data in `.rodata` and
+activations in `.bss`.
 Complete tensors are not placed on the stack. The current implementation
 allocates one static storage array for each nonconstant tensor; this is
 correctness-first storage, not yet a true ping-pong allocation. A later
@@ -772,8 +775,9 @@ memory-optimization pass can reuse buffers after the last consumer of each
 tensor, but it must preserve the residual branches whose values remain live.
 
 `resnet18_b0_main.c` loads the canonical input fixture through an executor API
-so the generated header's storage has one owner even though the main and
-executor are separate translation units.
+so the generated C file's storage has one owner even though the main and
+executor are separate translation units. Startup loads `__stack_top` from the
+linker script; it must not use a fixed address inside the activation `.bss`.
 
 ### 7.2 Implement the operator kernels
 

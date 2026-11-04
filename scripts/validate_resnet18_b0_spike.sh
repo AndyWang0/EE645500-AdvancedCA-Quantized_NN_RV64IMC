@@ -22,6 +22,7 @@ riscv64-unknown-elf-gcc \
     src/benchmarks/startup.S \
     src/benchmarks/resnet18_validation_main.c \
     src/benchmarks/resnet18_b0_executor.c \
+    model/exported/resnet18/resnet18_graph.c \
     src/kernels/qgemm.c \
     -o build/resnet18_b0_validation.elf
 
