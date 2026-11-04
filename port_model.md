@@ -1083,7 +1083,23 @@ If the graph has equal input and output quantization parameters, use the
 corresponding simplified integer expression only after verifying the metadata.
 Apply the graph's fused ReLU after the correctly quantized addition.
 
-## 10. Add X1 and X2 kernels
+## 10. Add B1, X1, and X2 kernels
+
+The ResNet executor uses one compile-time `RESNET18_EXECUTION_MODE` selector,
+so every configuration executes the same exported graph, input fixture, tensor
+storage, and non-convolution operators:
+
+| Mode | Value | Convolution implementation |
+|---|---:|---|
+| B0 | 0 | Original scalar convolution and scalar requantization |
+| B1 | 1 | Software-optimized scalar convolution with hoisted padding and reduced address recalculation |
+| X1 | 2 | Packed `xqmac8` accumulation with scalar requantization |
+| X2 | 3 | Packed `xqmac8` accumulation and `xqrequant8` requantization |
+
+B1 is a software-only intermediate for the incremental comparison
+`B0 -> B1 -> X1 -> X2`. X1 and X2 share the packed convolution loop. X2 uses
+`xqrequant8` for channels whose exported shifts fit `0..63`; the eight channels
+requiring wider shifts use the exact scalar wide fallback.
 
 After B0 matches the host model, add the custom paths:
 
@@ -1123,7 +1139,9 @@ Spike support, and compare its instruction count and model accuracy against
 the baseline X2 path.
 
 The custom paths must produce exactly the same output tensors as B0 for the
-same input and model parameters.
+same input and model parameters. A scalar tail handles reduction lengths that
+are not divisible by eight, including the first convolution's 27-element
+reduction.
 
 ## 11. Validate layer by layer
 
@@ -1150,43 +1168,29 @@ Common causes of mismatches are signedness, tensor layout, padding,
 activation zero-point correction, per-channel scales, bias scaling, rounding,
 residual-add quantization, and incorrect placement of ReLU.
 
-## 12. Build the bare-metal model
+## 12. Build and validate all bare-metal model modes
 
 Build separate configurations so the measured code differs only in the
 selected kernel implementation:
 
 ```text
 build/resnet18_b0.elf
+build/resnet18_b1.elf
 build/resnet18_x1.elf
 build/resnet18_x2.elf
 ```
 
-Use the existing startup and linker structure:
+Use the mode-aware build helper:
 
 ```sh
-riscv64-unknown-elf-gcc \
-    -std=c11 \
-    -march=rv64imc \
-    -mabi=lp64 \
-    -mcmodel=medany \
-    -O2 \
-    -ffreestanding \
-    -fno-builtin \
-    -nostdlib \
-    -nostartfiles \
-    -Wall -Wextra -Werror \
-    -Isrc/kernels -Imodel/exported/resnet18 \
-    src/benchmarks/startup.S \
-    src/benchmarks/resnet18_b0_main.c \
-    src/benchmarks/resnet18_b0_executor.c \
-    src/kernels/qgemm.c \
-    -T src/benchmarks/linker.ld \
-    -o build/resnet18_b0.elf
+./scripts/build_resnet18_b0.sh b0
+./scripts/build_resnet18_b0.sh b1
+./scripts/build_resnet18_b0.sh x1
+./scripts/build_resnet18_b0.sh x2
 ```
 
-For custom builds, enable X1 or X2 through the same compile-time mechanism
-used by the existing benchmark. Keep `-march=rv64imc`; do not add `F`, `D`,
-or vector extensions.
+The helper passes `-DRESNET18_EXECUTION_MODE=0..3` and keeps
+`-march=rv64imc`; no `F`, `D`, or vector extension is added.
 
 Inspect the disassembly and confirm that B0 contains no floating-point
 instructions and that X1/X2 contain the expected custom instruction words:
@@ -1208,7 +1212,7 @@ Use the Spike executable built from the `midterm-custom-isa` branch:
     2> results/raw/resnet18_b0.stderr
 ```
 
-Run the same input and model under B0, X1, and X2. The bare-metal program
+Run the same input and model under B0, B1, X1, and X2. The bare-metal program
 must write a deterministic pass/fail result and enter the normal terminal
 loop. The functional validation build uses the `tohost` protocol described in
 Section 7; performance-only benchmark harnesses may use their existing
@@ -1220,6 +1224,19 @@ loops from kernel-only measurements. Also report full-model counts when
 feasible; do not compare mismatched measurement regions.
 
 ## 14. Measure the complete model
+
+The complete-model measurement command is:
+
+```sh
+./scripts/run_resnet18_benchmarks.sh
+```
+
+It builds and runs all four modes with identical static data and input,
+captures raw Spike traces and disassemblies, counts the
+`benchmark_start`/`benchmark_end` interval, and writes
+`results/tables/resnet18_summary.csv`. The exported graph contains exactly
+`1,814,073,344` logical MACs. These are ISA-level measurements; Spike does
+not provide cycle, CPI, cache, or timing results.
 
 For every configuration, record:
 
@@ -1258,7 +1275,7 @@ they do not prove cycle speedup, CPI improvement, or hardware timing.
 The final repository should provide commands equivalent to:
 
 ```sh
-./scripts/fetch_resnet18_model.sh
+./scripts/freeze_resnet18.sh
 python3 scripts/inspect_litert_model.py \
     --model model/source/resnet18/resnet18_int8_channelwise.tflite
 python3 scripts/export_litert_model.py \
@@ -1271,7 +1288,7 @@ python3 scripts/export_litert_model.py \
 The benchmark script must:
 
 1. Verify the model file and recorded hash.
-2. Build B0, X1, and X2.
+2. Build B0, B1, X1, and X2.
 3. Run host and instruction-level correctness tests.
 4. Run all configurations under modified Spike.
 5. Compare final and, where available, intermediate outputs.
@@ -1307,6 +1324,7 @@ The model-porting work is complete when:
 - The exact model file and hash are recorded.
 - The graph and quantization metadata are exported reproducibly.
 - B0 runs the complete selected graph without an operating system or `pk`.
+- B0, B1, X1, and X2 execute the same complete graph under Spike.
 - X1 and X2 execute the custom instructions in the major dot-product kernels.
 - Final outputs match the host reference within the documented integer rule.
 - No floating-point extension is required.

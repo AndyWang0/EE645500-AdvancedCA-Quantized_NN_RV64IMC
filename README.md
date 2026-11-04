@@ -622,3 +622,41 @@ The reports are ISA-level instruction measurements, not cycle or CPI
 measurements. Raw traces and disassemblies are saved under
 [`results/raw/`](results/raw/), and the machine-readable tables are under
 [`results/tables/`](results/tables/).
+
+## Full ResNet-18 B0/B1/X1/X2 validation
+
+The exported ResNet-18 graph can be executed under the modified Spike in four
+configurations:
+
+- B0: scalar convolution and scalar requantization.
+- B1: software-optimized scalar convolution.
+- X1: `xqmac8` convolution with scalar requantization.
+- X2: `xqmac8` convolution with `xqrequant8`; channels outside the instruction
+  shift range use the exact scalar wide fallback.
+
+All modes use the same input, static model data, tensor graph, and host
+reference snapshots. Validate the complete model with:
+
+```sh
+./scripts/validate_resnet18_b0_spike.sh b0
+./scripts/validate_resnet18_b0_spike.sh b1
+./scripts/validate_resnet18_b0_spike.sh x1
+./scripts/validate_resnet18_b0_spike.sh x2
+```
+
+The command runs the complete graph without an instruction-limit cutoff and
+returns nonzero on any tensor mismatch. Diagnostic output reports the tensor
+ID, mismatch count, first mismatch index, expected byte, and actual byte.
+
+To collect complete-model Spike instruction traces and a consolidated
+measurement table:
+
+```sh
+./scripts/run_resnet18_benchmarks.sh
+```
+
+This writes mode-specific traces and disassemblies under
+[`results/raw/`](results/raw/) and the consolidated table to
+[`results/tables/resnet18_summary.csv`](results/tables/resnet18_summary.csv).
+The measurements are ISA-level retired-instruction counts, not cycle or CPI
+measurements.

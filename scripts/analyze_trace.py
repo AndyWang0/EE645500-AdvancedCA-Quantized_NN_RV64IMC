@@ -35,7 +35,7 @@ def classify(mnemonic):
     return "integer"
 
 
-def analyze(trace_path, disassembly_path, output_csv):
+def analyze(trace_path, disassembly_path, output_csv, logical_macs=4096):
     symbols = load_symbol_addresses(disassembly_path)
     start = symbols.get("benchmark_start")
     end = symbols.get("benchmark_end")
@@ -80,8 +80,8 @@ def analyze(trace_path, disassembly_path, output_csv):
         "custom": categories["custom"],
         "xqmac8": counts["xqmac8"],
         "xqrequant8": counts["xqrequant8"],
-        "logical_macs": 8 * 16 * 32,
-        "outputs": 8 * 16,
+        "logical_macs": logical_macs,
+        "outputs": None,
         "text_bytes": None,
     }
     with open(output_csv, "w", newline="", encoding="utf-8") as stream:
@@ -94,8 +94,9 @@ def analyze(trace_path, disassembly_path, output_csv):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
+    if len(sys.argv) not in (4, 5):
         raise SystemExit(
-            f"Usage: {sys.argv[0]} TRACE DISASSEMBLY OUTPUT_CSV"
+            f"Usage: {sys.argv[0]} TRACE DISASSEMBLY OUTPUT_CSV [LOGICAL_MACS]"
         )
-    analyze(sys.argv[1], sys.argv[2], sys.argv[3])
+    logical_macs = int(sys.argv[4]) if len(sys.argv) == 5 else 4096
+    analyze(sys.argv[1], sys.argv[2], sys.argv[3], logical_macs)

@@ -7,3 +7,4 @@ build/
 *.tflite
 model/test_vectors/host_validation/intermediate/
 model/exported/resnet18/
+remaining_work_for_midterm.md

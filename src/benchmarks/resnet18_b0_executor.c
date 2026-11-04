@@ -4,9 +4,30 @@
 #include "../../model/exported/resnet18/resnet18_quant_params.h"
 #include "../kernels/qgemm.h"
 
+#ifndef RESNET18_EXECUTION_MODE
+#define RESNET18_EXECUTION_MODE 0
+#endif
+
+#if defined(__riscv) && (__riscv_xlen == 64)
+#include "../kernels/xq_ops.h"
+#endif
+
 static int8_t requantize_channel(uint32_t op, uint32_t channel,
                                  int64_t accumulator);
 static int32_t weight_sum(uint32_t op, uint32_t channel);
+
+static int8_t requantize_fixed(int64_t accumulator, int32_t multiplier,
+                               uint8_t shift, int8_t zero_point)
+{
+#if defined(__riscv) && (__riscv_xlen == 64)
+    if (RESNET18_EXECUTION_MODE == 3) {
+        uint64_t parameters = xq_pack_requant_params(
+            multiplier, shift, zero_point);
+        return (int8_t)xqrequant8_emit(accumulator, parameters);
+    }
+#endif
+    return requantize_reference(accumulator, multiplier, shift, zero_point);
+}
 
 static int32_t round_divide(int64_t value, int64_t divisor)
 {
@@ -55,7 +76,7 @@ static int8_t requantize_channel(uint32_t op, uint32_t channel,
                 resnet18_op_##n##_fallback_shifts[channel],                  \
                 resnet18_op_##n##_output_zero_point);                        \
         }                                                                      \
-        return requantize_reference(                                          \
+        return requantize_fixed(                                               \
             accumulator, resnet18_op_##n##_multipliers[channel],             \
             resnet18_op_##n##_shifts[channel],                               \
             resnet18_op_##n##_output_zero_point)
@@ -208,6 +229,7 @@ static void conv2d_scalar(uint32_t op, const int8_t *input, const int8_t *weight
                                                      (uint32_t)ix) *
                                                     input_channels + ic];
                             }
+
                             accumulator += (int64_t)input_value * weight_value;
                             input_sum += input_value;
                         }
@@ -230,6 +252,153 @@ static void conv2d_scalar(uint32_t op, const int8_t *input, const int8_t *weight
         }
     }
 }
+
+static void conv2d_b1(uint32_t op, const int8_t *input, const int8_t *weights,
+                      const int32_t *bias, int8_t *output,
+                      uint32_t height, uint32_t width, uint32_t input_channels,
+                      uint32_t output_height, uint32_t output_width,
+                      uint32_t output_channels, uint32_t kernel_height,
+                      uint32_t kernel_width, uint32_t stride,
+                      int32_t input_zero_point)
+{
+    uint32_t pad_y = (output_height - 1U) * stride + kernel_height > height ?
+        (output_height - 1U) * stride + kernel_height - height : 0;
+    uint32_t pad_x = (output_width - 1U) * stride + kernel_width > width ?
+        (output_width - 1U) * stride + kernel_width - width : 0;
+    uint32_t oy;
+    uint32_t ox;
+    uint32_t oc;
+    for (oy = 0; oy < output_height; ++oy) {
+        for (ox = 0; ox < output_width; ++ox) {
+            int32_t base_y = (int32_t)(oy * stride) - (int32_t)(pad_y / 2U);
+            int32_t base_x = (int32_t)(ox * stride) - (int32_t)(pad_x / 2U);
+            for (oc = 0; oc < output_channels; ++oc) {
+                int64_t accumulator = bias[oc];
+                int64_t input_sum = 0;
+                uint32_t ky;
+                for (ky = 0; ky < kernel_height; ++ky) {
+                    uint32_t kx;
+                    for (kx = 0; kx < kernel_width; ++kx) {
+                        int32_t iy = base_y + (int32_t)ky;
+                        int32_t ix = base_x + (int32_t)kx;
+                        uint32_t ic;
+                        for (ic = 0; ic < input_channels; ++ic) {
+                            int8_t value = (int8_t)input_zero_point;
+                            if (iy >= 0 && ix >= 0 && (uint32_t)iy < height &&
+                                (uint32_t)ix < width)
+                                value = input[((uint32_t)iy * width +
+                                              (uint32_t)ix) * input_channels + ic];
+                            accumulator += (int64_t)value *
+                                weights[((oc * kernel_height + ky) * kernel_width +
+                                         kx) * input_channels + ic];
+                            input_sum += value;
+                        }
+                    }
+                }
+                accumulator -= (int64_t)input_zero_point * weight_sum(op, oc);
+                accumulator -= (int64_t)weight_zero_point(op, oc) * input_sum;
+                accumulator += (int64_t)kernel_height * kernel_width *
+                    input_channels * input_zero_point * weight_zero_point(op, oc);
+                output[(oy * output_width + ox) * output_channels + oc] =
+                    requantize_channel(op, oc, accumulator);
+                if (resnet18_operators[op].fused_activation == 1 &&
+                    output[(oy * output_width + ox) * output_channels + oc] <
+                    resnet18_tensors[resnet18_operators[op].outputs[0]].zero_point)
+                    output[(oy * output_width + ox) * output_channels + oc] =
+                        (int8_t)resnet18_tensors[
+                            resnet18_operators[op].outputs[0]].zero_point;
+            }
+        }
+    }
+}
+
+#if defined(__riscv) && (__riscv_xlen == 64)
+static void conv2d_custom(uint32_t op, const int8_t *input, const int8_t *weights,
+                          const int32_t *bias, int8_t *output,
+                          uint32_t height, uint32_t width, uint32_t input_channels,
+                          uint32_t output_height, uint32_t output_width,
+                          uint32_t output_channels, uint32_t kernel_height,
+                          uint32_t kernel_width, uint32_t stride,
+                          int32_t input_zero_point)
+{
+    uint32_t pad_y = (output_height - 1U) * stride + kernel_height > height ?
+        (output_height - 1U) * stride + kernel_height - height : 0;
+    uint32_t pad_x = (output_width - 1U) * stride + kernel_width > width ?
+        (output_width - 1U) * stride + kernel_width - width : 0;
+    uint32_t oy;
+    uint32_t ox;
+    uint32_t oc;
+    for (oy = 0; oy < output_height; ++oy) {
+        for (ox = 0; ox < output_width; ++ox) {
+            int32_t base_y = (int32_t)(oy * stride) - (int32_t)(pad_y / 2U);
+            int32_t base_x = (int32_t)(ox * stride) - (int32_t)(pad_x / 2U);
+            for (oc = 0; oc < output_channels; ++oc) {
+                uint32_t reduction = kernel_height * kernel_width * input_channels;
+                uint64_t bits = (uint64_t)bias[oc];
+                int64_t input_sum = 0;
+                uint32_t position;
+                for (position = 0; position + 8U <= reduction; position += 8U) {
+                    int8_t a[8];
+                    int8_t w[8];
+                    uint32_t lane;
+                    for (lane = 0; lane < 8U; ++lane) {
+                        uint32_t element = position + lane;
+                        uint32_t plane = element / input_channels;
+                        uint32_t ic = element % input_channels;
+                        uint32_t ky = plane / kernel_width;
+                        uint32_t kx = plane % kernel_width;
+                        int32_t iy = base_y + (int32_t)ky;
+                        int32_t ix = base_x + (int32_t)kx;
+                        int8_t value = (int8_t)input_zero_point;
+                        if (iy >= 0 && ix >= 0 && (uint32_t)iy < height &&
+                            (uint32_t)ix < width)
+                            value = input[((uint32_t)iy * width +
+                                          (uint32_t)ix) * input_channels + ic];
+                        a[lane] = value;
+                        w[lane] = weights[((oc * kernel_height + ky) * kernel_width +
+                                           kx) * input_channels + ic];
+                        input_sum += value;
+                    }
+                    bits = (uint64_t)xqmac8_emit((int64_t)bits,
+                        xq_pack_i8(a, 8U, 1U), xq_pack_i8(w, 8U, 1U));
+                }
+                {
+                    int64_t accumulator = (int64_t)bits;
+                    for (; position < reduction; ++position) {
+                        uint32_t plane = position / input_channels;
+                        uint32_t ic = position % input_channels;
+                        uint32_t ky = plane / kernel_width;
+                        uint32_t kx = plane % kernel_width;
+                        int32_t iy = base_y + (int32_t)ky;
+                        int32_t ix = base_x + (int32_t)kx;
+                        int8_t value = (int8_t)input_zero_point;
+                        if (iy >= 0 && ix >= 0 && (uint32_t)iy < height &&
+                            (uint32_t)ix < width)
+                            value = input[((uint32_t)iy * width +
+                                          (uint32_t)ix) * input_channels + ic];
+                        accumulator += (int64_t)value *
+                            weights[((oc * kernel_height + ky) * kernel_width +
+                                     kx) * input_channels + ic];
+                        input_sum += value;
+                    }
+                    accumulator -= (int64_t)input_zero_point * weight_sum(op, oc);
+                    accumulator -= (int64_t)weight_zero_point(op, oc) * input_sum;
+                    accumulator += (int64_t)reduction * input_zero_point *
+                        weight_zero_point(op, oc);
+                    output[(oy * output_width + ox) * output_channels + oc] =
+                        requantize_channel(op, oc, accumulator);
+                }
+                if (resnet18_operators[op].fused_activation == 1 &&
+                    output[(oy * output_width + ox) * output_channels + oc] <
+                    resnet18_tensors[resnet18_operators[op].outputs[0]].zero_point)
+                    output[(oy * output_width + ox) * output_channels + oc] =
+                        (int8_t)resnet18_tensors[
+                            resnet18_operators[op].outputs[0]].zero_point;
+            }
+        }
+    }
+}
+#endif
 
 static void max_pool(const int8_t *input, int8_t *output, uint32_t height,
                      uint32_t width, uint32_t channels, uint32_t out_height,
@@ -338,12 +507,35 @@ void resnet18_run(void)
         case 3: {
             const int8_t *weights = (const int8_t *)resnet18_tensors[current.inputs[1]].constant_data;
             const int32_t *bias = (const int32_t *)resnet18_tensors[current.inputs[2]].constant_data;
-            conv2d_scalar(op, input_data, weights, bias, output->data,
+#if defined(__riscv) && (__riscv_xlen == 64)
+            if (RESNET18_EXECUTION_MODE == 2 ||
+                RESNET18_EXECUTION_MODE == 3) {
+                conv2d_custom(op, input_data, weights, bias, output->data,
+                              input->shape[1], input->shape[2], input->shape[3],
+                              output->shape[1], output->shape[2],
+                              output->shape[3],
+                              resnet18_tensors[current.inputs[1]].shape[1],
+                              resnet18_tensors[current.inputs[1]].shape[2],
+                              current.stride_h, input->zero_point);
+            } else
+#endif
+            if (RESNET18_EXECUTION_MODE == 1) {
+                conv2d_b1(op, input_data, weights, bias, output->data,
                           input->shape[1], input->shape[2], input->shape[3],
-                          output->shape[1], output->shape[2], output->shape[3],
+                          output->shape[1], output->shape[2],
+                          output->shape[3],
                           resnet18_tensors[current.inputs[1]].shape[1],
                           resnet18_tensors[current.inputs[1]].shape[2],
                           current.stride_h, input->zero_point);
+            } else {
+                conv2d_scalar(op, input_data, weights, bias, output->data,
+                              input->shape[1], input->shape[2], input->shape[3],
+                              output->shape[1], output->shape[2],
+                              output->shape[3],
+                              resnet18_tensors[current.inputs[1]].shape[1],
+                              resnet18_tensors[current.inputs[1]].shape[2],
+                              current.stride_h, input->zero_point);
+            }
             break;
         }
         case 5:
