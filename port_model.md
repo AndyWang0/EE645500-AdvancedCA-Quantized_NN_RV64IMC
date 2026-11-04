@@ -1206,10 +1206,10 @@ Use the Spike executable built from the `midterm-custom-isa` branch:
 ```sh
 /home/andy/src/riscv-isa-sim/build/spike \
     --isa=RV64IMC \
-    -l \
+    -g \
     build/resnet18_b0.elf \
-    > results/raw/resnet18_b0.trace \
-    2> results/raw/resnet18_b0.stderr
+    > results/raw/resnet18_b0.stdout \
+    2> results/raw/resnet18_b0.histogram
 ```
 
 Run the same input and model under B0, B1, X1, and X2. The bare-metal program
@@ -1218,10 +1218,13 @@ loop. The functional validation build uses the `tohost` protocol described in
 Section 7; performance-only benchmark harnesses may use their existing
 terminal-loop convention.
 
-Use `benchmark_start` and `benchmark_end` symbols around the model inference
-call. Exclude startup, reference generation, output comparison, and terminal
-loops from kernel-only measurements. Also report full-model counts when
-feasible; do not compare mismatched measurement regions.
+The `-g` option emits a bounded PC histogram rather than one line per retired
+instruction. This is important for the complete model: an unrestricted `-l`
+trace can consume hundreds of gigabytes. The histogram is classified against
+the ELF disassembly by `scripts/analyze_histogram.py`. Exclude startup,
+reference generation, output comparison, and terminal loops from kernel-only
+measurements. Also report full-model counts when feasible; do not compare
+mismatched measurement regions.
 
 ## 14. Measure the complete model
 
@@ -1231,10 +1234,9 @@ The complete-model measurement command is:
 ./scripts/run_resnet18_benchmarks.sh
 ```
 
-It builds and runs all four modes with identical static data and input,
-captures raw Spike traces and disassemblies, counts the
-`benchmark_start`/`benchmark_end` interval, and writes
-`results/tables/resnet18_summary.csv`. The exported graph contains exactly
+It builds and runs all four modes with identical static data and input, saves
+histograms and disassemblies, classifies the complete-model instruction mix,
+and writes `results/tables/resnet18_summary.csv`. The exported graph contains exactly
 `1,814,073,344` logical MACs. These are ISA-level measurements; Spike does
 not provide cycle, CPI, cache, or timing results.
 
@@ -1266,9 +1268,10 @@ final fully connected layer
 complete ResNet-18 inference
 ```
 
-Retain raw traces, disassemblies, program output, compiler diagnostics, and
-machine-readable CSV summaries. Spike traces provide ISA-level measurements;
-they do not prove cycle speedup, CPI improvement, or hardware timing.
+Retain raw histograms, disassemblies, program output, compiler diagnostics, and
+machine-readable CSV summaries. Spike histograms provide ISA-level
+measurements; they do not prove cycle speedup, CPI improvement, or hardware
+timing.
 
 ## 15. Automate the workflow
 
@@ -1290,10 +1293,10 @@ The benchmark script must:
 1. Verify the model file and recorded hash.
 2. Build B0, B1, X1, and X2.
 3. Run host and instruction-level correctness tests.
-4. Run all configurations under modified Spike.
+4. Run all configurations under modified Spike with `-g`.
 5. Compare final and, where available, intermediate outputs.
-6. Save traces and disassemblies.
-7. Invoke the trace analyzer.
+6. Save histograms and disassemblies.
+7. Invoke the histogram analyzer.
 8. Generate a consolidated CSV.
 9. Return a nonzero status on any build, simulation, or verification failure.
 

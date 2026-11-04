@@ -648,15 +648,18 @@ The command runs the complete graph without an instruction-limit cutoff and
 returns nonzero on any tensor mismatch. Diagnostic output reports the tensor
 ID, mismatch count, first mismatch index, expected byte, and actual byte.
 
-To collect complete-model Spike instruction traces and a consolidated
-measurement table:
+To collect complete-model Spike PC histograms and a consolidated measurement
+table:
 
 ```sh
 ./scripts/run_resnet18_benchmarks.sh
 ```
 
-This writes mode-specific traces and disassemblies under
+This writes mode-specific histograms and disassemblies under
 [`results/raw/`](results/raw/) and the consolidated table to
 [`results/tables/resnet18_summary.csv`](results/tables/resnet18_summary.csv).
-The measurements are ISA-level retired-instruction counts, not cycle or CPI
-measurements.
+The detailed workflow and bottleneck analysis are in
+[`EXPERIMENTS.md`](EXPERIMENTS.md). Histogram measurements are ISA-level
+retired-instruction counts, not cycle or CPI measurements; an unbounded
+complete-model `spike -l` trace must not be used because it can consume
+hundreds of gigabytes.

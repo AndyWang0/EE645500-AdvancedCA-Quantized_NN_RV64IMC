@@ -45,7 +45,7 @@ static int8_t clamp_int8_value(int32_t value)
     return (int8_t)value;
 }
 
-static void fully_connected_scalar(uint32_t op, const int8_t *input,
+static __attribute__((noinline)) void fully_connected_scalar(uint32_t op, const int8_t *input,
                                    const int8_t *weights, const int32_t *bias,
                                    int8_t *output, uint32_t input_size,
                                    uint32_t output_size, int32_t input_zp,
@@ -188,7 +188,7 @@ static void pad_tensor(const int8_t *input, int8_t *output,
     }
 }
 
-static void conv2d_scalar(uint32_t op, const int8_t *input, const int8_t *weights,
+static __attribute__((noinline)) void conv2d_scalar(uint32_t op, const int8_t *input, const int8_t *weights,
                           const int32_t *bias, int8_t *output,
                           uint32_t height, uint32_t width, uint32_t input_channels,
                           uint32_t output_height, uint32_t output_width,
@@ -253,7 +253,7 @@ static void conv2d_scalar(uint32_t op, const int8_t *input, const int8_t *weight
     }
 }
 
-static void conv2d_b1(uint32_t op, const int8_t *input, const int8_t *weights,
+static __attribute__((noinline)) void conv2d_b1(uint32_t op, const int8_t *input, const int8_t *weights,
                       const int32_t *bias, int8_t *output,
                       uint32_t height, uint32_t width, uint32_t input_channels,
                       uint32_t output_height, uint32_t output_width,
@@ -313,7 +313,7 @@ static void conv2d_b1(uint32_t op, const int8_t *input, const int8_t *weights,
 }
 
 #if defined(__riscv) && (__riscv_xlen == 64)
-static void conv2d_custom(uint32_t op, const int8_t *input, const int8_t *weights,
+static __attribute__((noinline)) void conv2d_custom(uint32_t op, const int8_t *input, const int8_t *weights,
                           const int32_t *bias, int8_t *output,
                           uint32_t height, uint32_t width, uint32_t input_channels,
                           uint32_t output_height, uint32_t output_width,
@@ -507,6 +507,8 @@ void resnet18_run(void)
         case 3: {
             const int8_t *weights = (const int8_t *)resnet18_tensors[current.inputs[1]].constant_data;
             const int32_t *bias = (const int32_t *)resnet18_tensors[current.inputs[2]].constant_data;
+            if (op == 2U)
+                __asm__ volatile (".globl resnet18_initial_conv_start\nresnet18_initial_conv_start:");
 #if defined(__riscv) && (__riscv_xlen == 64)
             if (RESNET18_EXECUTION_MODE == 2 ||
                 RESNET18_EXECUTION_MODE == 3) {
@@ -536,6 +538,8 @@ void resnet18_run(void)
                               resnet18_tensors[current.inputs[1]].shape[2],
                               current.stride_h, input->zero_point);
             }
+            if (op == 2U)
+                __asm__ volatile (".globl resnet18_initial_conv_end\nresnet18_initial_conv_end:");
             break;
         }
         case 5:
@@ -555,9 +559,11 @@ void resnet18_run(void)
         case 4: {
             const int8_t *weights = (const int8_t *)resnet18_tensors[current.inputs[1]].constant_data;
             const int32_t *bias = (const int32_t *)resnet18_tensors[current.inputs[2]].constant_data;
+            __asm__ volatile (".globl resnet18_fc_start\nresnet18_fc_start:");
             fully_connected_scalar(op, input_data, weights, bias, output->data,
                                    input->elements, output->elements,
                                    input->zero_point, output->zero_point);
+            __asm__ volatile (".globl resnet18_fc_end\nresnet18_fc_end:");
             break;
         }
         default:
