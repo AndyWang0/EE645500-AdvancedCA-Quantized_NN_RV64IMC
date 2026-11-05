@@ -8,3 +8,5 @@ build/
 model/test_vectors/host_validation/intermediate/
 model/exported/resnet18/
 remaining_work_for_midterm.md
+*report.md
+results/raw/*
