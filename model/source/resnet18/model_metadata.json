@@ -1,0 +1,28 @@
+{
+  "repository": "litert-community/resnet18",
+  "revision": "main",
+  "model_file": "resnet18_int8_channelwise.tflite",
+  "model_url": "https://huggingface.co/litert-community/resnet18/resolve/main/resnet18_int8_channelwise.tflite",
+  "readme_file": "README.md",
+  "readme_url": "https://huggingface.co/litert-community/resnet18/raw/main/README.md",
+  "downloaded_at_utc": "2026-11-03T16:17:50Z",
+  "sha256": {
+    "resnet18_int8_channelwise.tflite": "8fea1acb62829e120b4953b6fbf0f842e0032909254f51c2d989703b66534683",
+    "README.md": "b7f5d7d636ff1f50b6b1b4bf870e143e67d563ab3352666a867a04d950180d68"
+  },
+  "tools": {
+    "python": "3.10.12",
+    "numpy": "2.2.6",
+    "Pillow": "12.0.0",
+    "huggingface_hub": "not-installed",
+    "ai-edge-litert": "not-installed",
+    "tensorflow": "2.20.0",
+    "riscv64-unknown-elf-gcc": "10.2.0",
+    "spike": {
+      "version": "1.1.1-dev",
+      "source_revision": "a80897fc5b7b6c491019b58145338e1678a30366",
+      "source_branch": "midterm-custom-isa",
+      "executable": "/home/andy/src/riscv-isa-sim/build/spike"
+    }
+  }
+}

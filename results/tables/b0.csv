@@ -1,0 +1,2 @@
+dynamic_instructions,loads,stores,integer,multiply,branches,custom,xqmac8,xqrequant8,logical_macs,outputs,text_bytes
+62067,8704,128,43084,4352,5799,0,0,0,4096,128,
