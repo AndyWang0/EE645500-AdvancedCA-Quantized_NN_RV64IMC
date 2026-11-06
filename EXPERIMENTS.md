@@ -18,7 +18,7 @@ Run the correctness gates before measuring:
 
 ```sh
 mkdir -p build
-gcc -std=c11 -Wall -Wextra -Werror -O2 \
+gcc -std=c11 -Wall -Wextra -Werror -O3 \
     tests/test_qgemm.c src/kernels/qgemm.c -o build/test_qgemm
 ./build/test_qgemm
 ./scripts/test_custom_spike.sh

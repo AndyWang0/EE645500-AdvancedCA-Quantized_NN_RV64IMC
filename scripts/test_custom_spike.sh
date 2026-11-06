@@ -12,7 +12,7 @@ riscv64-unknown-elf-gcc \
     -march=rv64imc \
     -mabi=lp64 \
     -mcmodel=medany \
-    -O2 \
+    -O3 \
     -ffreestanding \
     -fno-builtin \
     -Wall -Wextra -Werror \

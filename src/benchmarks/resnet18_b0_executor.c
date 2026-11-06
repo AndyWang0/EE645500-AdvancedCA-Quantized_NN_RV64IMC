@@ -313,6 +313,28 @@ static __attribute__((noinline)) void conv2d_b1(uint32_t op, const int8_t *input
 }
 
 #if defined(__riscv) && (__riscv_xlen == 64)
+static inline int8_t conv2d_input_value(const int8_t *input,
+                                        uint32_t height, uint32_t width,
+                                        uint32_t input_channels,
+                                        int32_t base_y, int32_t base_x,
+                                        uint32_t kernel_width,
+                                        uint32_t position,
+                                        int32_t input_zero_point)
+{
+    uint32_t plane = position / input_channels;
+    uint32_t ic = position % input_channels;
+    uint32_t ky = plane / kernel_width;
+    uint32_t kx = plane % kernel_width;
+    int32_t iy = base_y + (int32_t)ky;
+    int32_t ix = base_x + (int32_t)kx;
+
+    if (iy < 0 || ix < 0 || (uint32_t)iy >= height ||
+        (uint32_t)ix >= width)
+        return (int8_t)input_zero_point;
+    return input[((uint32_t)iy * width + (uint32_t)ix) *
+                 input_channels + ic];
+}
+
 static __attribute__((noinline)) void conv2d_custom(uint32_t op, const int8_t *input, const int8_t *weights,
                           const int32_t *bias, int8_t *output,
                           uint32_t height, uint32_t width, uint32_t input_channels,
@@ -332,68 +354,73 @@ static __attribute__((noinline)) void conv2d_custom(uint32_t op, const int8_t *i
         for (ox = 0; ox < output_width; ++ox) {
             int32_t base_y = (int32_t)(oy * stride) - (int32_t)(pad_y / 2U);
             int32_t base_x = (int32_t)(ox * stride) - (int32_t)(pad_x / 2U);
-            for (oc = 0; oc < output_channels; ++oc) {
-                uint32_t reduction = kernel_height * kernel_width * input_channels;
-                uint64_t bits = (uint64_t)bias[oc];
+            uint32_t reduction = kernel_height * kernel_width * input_channels;
+            uint32_t output_base = (oy * output_width + ox) * output_channels;
+            for (oc = 0; oc < output_channels; oc += 8U) {
+                uint64_t accumulators[8];
+                uint32_t block_channels = output_channels - oc;
                 int64_t input_sum = 0;
+                uint32_t lane;
                 uint32_t position;
-                for (position = 0; position + 8U <= reduction; position += 8U) {
-                    int8_t a[8];
-                    int8_t w[8];
-                    uint32_t lane;
+
+                if (block_channels > 8U)
+                    block_channels = 8U;
+                for (lane = 0; lane < block_channels; ++lane)
+                    accumulators[lane] = (uint64_t)bias[oc + lane];
+
+                for (position = 0; position + 8U <= reduction;
+                     position += 8U) {
+                    int8_t activation_lanes[8];
+                    uint64_t packed_activation;
+
                     for (lane = 0; lane < 8U; ++lane) {
-                        uint32_t element = position + lane;
-                        uint32_t plane = element / input_channels;
-                        uint32_t ic = element % input_channels;
-                        uint32_t ky = plane / kernel_width;
-                        uint32_t kx = plane % kernel_width;
-                        int32_t iy = base_y + (int32_t)ky;
-                        int32_t ix = base_x + (int32_t)kx;
-                        int8_t value = (int8_t)input_zero_point;
-                        if (iy >= 0 && ix >= 0 && (uint32_t)iy < height &&
-                            (uint32_t)ix < width)
-                            value = input[((uint32_t)iy * width +
-                                          (uint32_t)ix) * input_channels + ic];
-                        a[lane] = value;
-                        w[lane] = weights[((oc * kernel_height + ky) * kernel_width +
-                                           kx) * input_channels + ic];
-                        input_sum += value;
+                        activation_lanes[lane] = conv2d_input_value(
+                            input, height, width, input_channels, base_y,
+                            base_x, kernel_width, position + lane,
+                            input_zero_point);
+                        input_sum += activation_lanes[lane];
                     }
-                    bits = (uint64_t)xqmac8_emit((int64_t)bits,
-                        xq_pack_i8(a, 8U, 1U), xq_pack_i8(w, 8U, 1U));
+                    packed_activation = xq_pack_i8(activation_lanes, 8U, 1U);
+
+                    for (lane = 0; lane < block_channels; ++lane) {
+                        uint64_t packed_weights = xq_pack_i8(
+                            &weights[(oc + lane) * reduction + position],
+                            8U, 1U);
+                        accumulators[lane] = (uint64_t)xqmac8_emit(
+                            (int64_t)accumulators[lane],
+                            packed_activation, packed_weights);
+                    }
                 }
-                {
-                    int64_t accumulator = (int64_t)bits;
-                    for (; position < reduction; ++position) {
-                        uint32_t plane = position / input_channels;
-                        uint32_t ic = position % input_channels;
-                        uint32_t ky = plane / kernel_width;
-                        uint32_t kx = plane % kernel_width;
-                        int32_t iy = base_y + (int32_t)ky;
-                        int32_t ix = base_x + (int32_t)kx;
-                        int8_t value = (int8_t)input_zero_point;
-                        if (iy >= 0 && ix >= 0 && (uint32_t)iy < height &&
-                            (uint32_t)ix < width)
-                            value = input[((uint32_t)iy * width +
-                                          (uint32_t)ix) * input_channels + ic];
-                        accumulator += (int64_t)value *
-                            weights[((oc * kernel_height + ky) * kernel_width +
-                                     kx) * input_channels + ic];
-                        input_sum += value;
-                    }
-                    accumulator -= (int64_t)input_zero_point * weight_sum(op, oc);
-                    accumulator -= (int64_t)weight_zero_point(op, oc) * input_sum;
+
+                for (; position < reduction; ++position) {
+                    int8_t value = conv2d_input_value(
+                        input, height, width, input_channels, base_y, base_x,
+                        kernel_width, position, input_zero_point);
+                    input_sum += value;
+                    for (lane = 0; lane < block_channels; ++lane)
+                        accumulators[lane] += (uint64_t)((int64_t)value *
+                            weights[(oc + lane) * reduction + position]);
+                }
+
+                for (lane = 0; lane < block_channels; ++lane) {
+                    uint32_t channel = oc + lane;
+                    int64_t accumulator = (int64_t)accumulators[lane];
+                    int8_t result;
+
+                    accumulator -= (int64_t)input_zero_point *
+                                   weight_sum(op, channel);
+                    accumulator -= (int64_t)weight_zero_point(op, channel) *
+                                   input_sum;
                     accumulator += (int64_t)reduction * input_zero_point *
-                        weight_zero_point(op, oc);
-                    output[(oy * output_width + ox) * output_channels + oc] =
-                        requantize_channel(op, oc, accumulator);
-                }
-                if (resnet18_operators[op].fused_activation == 1 &&
-                    output[(oy * output_width + ox) * output_channels + oc] <
-                    resnet18_tensors[resnet18_operators[op].outputs[0]].zero_point)
-                    output[(oy * output_width + ox) * output_channels + oc] =
-                        (int8_t)resnet18_tensors[
+                                   weight_zero_point(op, channel);
+                    result = requantize_channel(op, channel, accumulator);
+                    if (resnet18_operators[op].fused_activation == 1 &&
+                        result < resnet18_tensors[
+                            resnet18_operators[op].outputs[0]].zero_point)
+                        result = (int8_t)resnet18_tensors[
                             resnet18_operators[op].outputs[0]].zero_point;
+                    output[output_base + channel] = result;
+                }
             }
         }
     }

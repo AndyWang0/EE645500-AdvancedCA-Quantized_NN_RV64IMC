@@ -7,7 +7,7 @@ cd "$ROOT_DIR"
 mkdir -p build results/raw results/tables
 
 COMMON_FLAGS=(
-    -std=c11 -march=rv64imc -mabi=lp64 -mcmodel=medany -O2
+    -std=c11 -march=rv64imc -mabi=lp64 -mcmodel=medany -O3
     -ffreestanding -fno-builtin -Wall -Wextra -Werror
     -nostdlib -nostartfiles -T src/benchmarks/linker.ld
 )
