@@ -1,5 +1,22 @@
 # ResNet-18 ISA Experiments
 
+## Updated user-run snapshot and script audit
+
+The user has now measured the shared patch-based convolution. The audited
+whole-program totals are B0 25,847,519,995, B1 8,987,379,995, X1 8,609,609,995,
+and X2 8,504,784,995. B1 executes neither custom instruction. See
+[the audit](docs/benchmark_audit.md) for the mode checks, packing bottleneck,
+and script fixes. No new model execution was performed during that audit.
+
+## Earlier experiment record
+
+B1 and X1/X2 now use the shared patch-based implementation described in
+[the regression diagnosis and rewrite](docs/convolution_optimization.md).
+No build, validation, or benchmark was run by the agent for that source
+change. All correctness statements and tables below refer to older implementations, not
+the current source. The tables below also predate the saved CSVs discussed in
+that diagnosis. They are retained as history, not as the updated snapshot above.
+
 This document records reproducible measurements for the quantized ResNet-18
 port. The four configurations are B0 (scalar), B1 (software-optimized
 scalar), X1 (packed `xqmac8` with scalar requantization), and X2 (packed

@@ -262,11 +262,20 @@ For a model operator, compare every output element against the same project-defi
 
 ## 7. Benchmark Methodology
 
-Run at least three configurations using identical tensors and parameters:
+Run all four model configurations using identical tensors and parameters:
 
 - `B0`: scalar MAC and scalar project-defined requantization.
-- `X1`: `xqmac8` with scalar project-defined requantization.
-- `X2`: `xqmac8` plus `xqrequant8`.
+- `B1`: reusable one-position input patch and an eight-element unrolled scalar dot product.
+- `X1`: the same patch preparation/traversal as B1, using `xqmac8` with scalar project-defined requantization.
+- `X2`: the X1 path plus `xqrequant8` for representable parameters, with the existing wide scalar fallback otherwise.
+
+The shared convolution implementation and historical B1 regression diagnosis
+are documented in [convolution_optimization.md](docs/convolution_optimization.md).
+The updated user-run counts are examined in the
+[benchmark audit](docs/benchmark_audit.md); benchmark completion does not replace
+tensor-level correctness validation. Include patch gathering,
+correction setup, runtime packing, and tail work inside the measurement scope;
+compare B1-to-X1 separately from B0-to-B1 to isolate the ISA effect.
 
 Measure at least one dot-product microbenchmark, two major model operators, and one complete model block or full inference if available. Save raw Spike traces, disassembly, exact commands, compiler flags, tool versions, tensor dimensions, random seed, and output verification results.
 
@@ -278,7 +287,7 @@ Report:
 - Logical MACs per retired instruction.
 - Dynamic instructions per output element.
 - Static code size.
-- Instruction-count reduction from `B0` to `X1` and from `X1` to `X2`.
+- Instruction-count changes for `B0 -> B1`, `B1 -> X1`, and `X1 -> X2`, plus the overall comparison against B0.
 
 Spike instruction counts are ISA-level measurements. They are not, by themselves, cycle counts, CPI, or evidence of a cycle-accurate speedup.
 

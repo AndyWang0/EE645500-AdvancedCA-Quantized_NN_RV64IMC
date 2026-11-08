@@ -1047,12 +1047,13 @@ operator metadata requests a fused activation.
 
 ## 8. Choose the convolution implementation
 
-The current B0 implementation uses direct scalar convolution. An alternative
-implementation to evaluate after correctness is established is `im2col` plus
-the existing GEMM path, because it may simplify reuse of `qgemm_scalar()`:
+The current B0 implementation uses direct scalar convolution. B1 and X1/X2
+now gather a **single output position's** patch into static contiguous scratch,
+then reuse it for all output channels. This is a small im2col-style panel, not
+a full-image im2col matrix or a call to the synthetic GEMM kernel:
 
 ```text
-im2col(input) × weight_matrix = output_matrix
+one input patch × channel weight rows = one output position
 ```
 
 The reduction length is:
@@ -1064,9 +1065,14 @@ kernel_height * kernel_width * input_channels
 For later ResNet layers this is usually divisible by eight. The first
 convolution and any other non-divisible reduction must use a scalar tail.
 
-The direct kernel avoids materializing an `im2col` buffer, while the GEMM
-version may make the later X1/X2 integration simpler. The benchmark must
-include whichever transformation and data movement are actually used.
+The optimized modes share patch preparation and traversal, with scalar or
+custom eight-element dot products. Include patch preparation, correction
+setup, and custom packing in the benchmark region. See
+[the rewrite record](convolution_optimization.md) for scratch bounds and the
+previous B1 regression. The user has since supplied measurements examined in
+[the benchmark audit](benchmark_audit.md); no new model execution was performed
+during that audit. Historical results later in this document do not apply to
+the rewritten implementation, and tensor-level validation is a separate gate.
 
 ## 9. Implement residual addition and activation
 
@@ -1092,12 +1098,15 @@ storage, and non-convolution operators:
 | Mode | Value | Convolution implementation |
 |---|---:|---|
 | B0 | 0 | Original scalar convolution and scalar requantization |
-| B1 | 1 | Software-optimized scalar convolution with hoisted padding and reduced address recalculation |
-| X1 | 2 | Packed `xqmac8` accumulation with scalar requantization |
-| X2 | 3 | Packed `xqmac8` accumulation and `xqrequant8` requantization |
+| B1 | 1 | Shared one-position input patch, hoisted corrections, contiguous eight-way unrolled scalar reduction |
+| X1 | 2 | Same shared preparation/traversal as B1, `xqmac8_emit` reduction, scalar requantization |
+| X2 | 3 | Same as X1, `xqrequant8_emit` requantization where representable |
 
 B1 is a software-only intermediate for the incremental comparison
-`B0 -> B1 -> X1 -> X2`. X1 and X2 share the packed convolution loop. X2 uses
+`B0 -> B1 -> X1 -> X2`. All three optimized modes instantiate the same
+always-inlined core in the noinline B1/custom entry points. Activation packing
+is done once per output position for X1/X2; weight packing remains in the
+reduction loop. There is no eight-channel accumulator array. X2 uses
 `xqrequant8` for channels whose exported shifts fit `0..63`; the eight channels
 requiring wider shifts use the exact scalar wide fallback.
 
@@ -1109,9 +1118,10 @@ Use `xqmac8` for groups of eight signed INT8 products and retain scalar
 requantization:
 
 ```text
-packed input and weight loads
+shared patch gathering and invariant correction setup
+→ activation packing once per output position, runtime weight packing
 → xqmac8 accumulation
-→ activation zero-point correction
+→ remaining weight-zero-point correction, if needed
 → scalar requantization
 ```
 
@@ -1120,9 +1130,10 @@ packed input and weight loads
 Use both custom instructions:
 
 ```text
-packed input and weight loads
+shared patch gathering and invariant correction setup
+→ activation packing once per output position, runtime weight packing
 → xqmac8 accumulation
-→ activation zero-point correction
+→ remaining weight-zero-point correction, if needed
 → xqrequant8
 ```
 
@@ -1140,8 +1151,8 @@ the baseline X2 path.
 
 The custom paths must produce exactly the same output tensors as B0 for the
 same input and model parameters. A scalar tail handles reduction lengths that
-are not divisible by eight, including the first convolution's 27-element
-reduction.
+are not divisible by eight, including the first convolution's 147-element
+reduction (`7 * 7 * 3`), which has three scalar tail elements.
 
 ## 11. Validate layer by layer
 

@@ -13,7 +13,10 @@ cycle, CPI, cache, area, frequency, energy, or hardware speedup results.
 
 ## Midterm status
 
-The midterm deliverables are complete:
+The midterm implementation and supporting materials are listed below. The user
+has supplied benchmark results for the rewritten B1/X1/X2; see the
+[instruction-count and script audit](docs/benchmark_audit.md). Benchmark
+completion is separate from tensor-level functional validation.
 
 1. C/C++ bare-metal workload [`src/benchmarks/resnet18_b0_executor.c`](src/benchmarks/resnet18_b0_executor.c) and kernels [`src/kernels/qgemm.c`](src/kernels/qgemm.c). 
 2. INT8 model [`model/source/resnet18`](model/source/resnet18/model_metadata.json) and Python conversion/export scripts [`scripts/export_litert_model.py`](scripts/export_litert_model.py).
@@ -28,22 +31,23 @@ requested midterm scope.
 
 ## Results at a glance
 
-The complete ResNet-18 graph contains 1,814,073,344 logical MACs. The
-following measurements were collected with Spike PC histograms and are
-reproducible with [`scripts/run_resnet18_benchmarks.sh`](scripts/run_resnet18_benchmarks.sh).
+The complete ResNet-18 graph contains 1,814,073,344 logical MACs. This table
+reflects the updated user-run benchmark snapshot. Its total and custom counts
+were checked against the saved histograms, disassemblies, and existing ELFs;
+no new simulation was run during the audit.
 
 | Mode | Description | Dynamic instructions | `xqmac8` | `xqrequant8` | MAC/instruction | `.text` bytes |
 |---|---|---:|---:|---:|---:|---:|
-| B0 | Scalar convolution and requantization | 34,651,939,995 | 0 | 0 | 0.052351 | 7,040 |
-| B1 | Software-optimized scalar convolution | 34,642,099,995 | 0 | 0 | 0.052366 | 7,034 |
-| X1 | `xqmac8` plus scalar requantization | 89,576,554,995 | 226,394,112 | 0 | 0.020252 | 7,110 |
-| X2 | `xqmac8` plus `xqrequant8` | 89,471,729,995 | 226,394,112 | 2,384,360 | 0.020275 | 7,208 |
+| B0 | Scalar convolution and requantization | 25,847,519,995 | 0 | 0 | 0.070184 | 9,178 |
+| B1 | Software-optimized scalar convolution | 8,987,379,995 | 0 | 0 | 0.201847 | 11,234 |
+| X1 | `xqmac8` plus scalar requantization | 8,609,609,995 | 226,394,112 | 0 | 0.210703 | 11,436 |
+| X2 | `xqmac8` plus `xqrequant8` | 8,504,784,995 | 226,394,112 | 2,384,360 | 0.213300 | 11,526 |
 
-X1 and X2 are functionally correct and execute the custom instructions, but
-currently retire more instructions than B0. Packing, temporary stores,
-address generation, loop/control overhead, reduction tails, and scalar wide
-requantization fallback dominate the current packed implementation. This is
-the main bottleneck identified by the midterm experiment.
+B1 executes neither custom instruction. X1 saves 4.20% against new B1, and X2
+saves another 1.22% against X1. Runtime weight packing keeps the totals close:
+the saved eight-product inner loops retire 38 instructions in B1 versus 36
+in X1. See [the audit](docs/benchmark_audit.md) for the instruction-level
+evidence, accounting scope, and fixes to the benchmark reporting path.
 
 The small synthetic GEMM gives a complementary, bounded measurement:
 
@@ -62,6 +66,8 @@ These are instruction counts, not execution cycles.
 | [`DESIGN.md`](DESIGN.md) | ISA encoding, semantics, quantization contract, and rationale |
 | [`docs/port_model.md`](docs/port_model.md) | Model acquisition, conversion, export, execution, and validation workflow |
 | [`EXPERIMENTS.md`](EXPERIMENTS.md) | Detailed experiment procedure, tables, and bottleneck analysis |
+| [`docs/convolution_optimization.md`](docs/convolution_optimization.md) | Previous B1 regression evidence and the shared-loop rewrite design |
+| [`docs/benchmark_audit.md`](docs/benchmark_audit.md) | Updated user-run counts, mode isolation, packing bottleneck, and benchmark-script corrections |
 | [`src/kernels/`](src/kernels/) | Scalar kernels, custom wrappers, and host fallbacks |
 | [`src/benchmarks/`](src/benchmarks/) | Bare-metal startup, linker, GEMM, validation, and ResNet executors |
 | [`src/isa/`](src/isa/) | ISA-side instruction source used by the modified Spike checkout |
@@ -242,7 +248,8 @@ SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resne
 SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resnet18_b0_spike.sh x2
 ```
 
-Expected result for each mode:
+Required result for each mode after you validate this revision (not rerun as
+part of the convolution rewrite):
 
 ```text
 Spike B0 validation passed
@@ -275,9 +282,9 @@ selected with `RESNET18_EXECUTION_MODE`:
 | Value | Mode | Convolution | Requantization |
 |---:|---|---|---|
 | 0 | B0 | scalar | scalar |
-| 1 | B1 | software-optimized scalar | scalar |
-| 2 | X1 | packed `xqmac8` | scalar |
-| 3 | X2 | packed `xqmac8` | `xqrequant8` where representable |
+| 1 | B1 | reusable input patch, unrolled scalar dot product | scalar |
+| 2 | X1 | same patch/traversal as B1, `xqmac8` dot product | scalar |
+| 3 | X2 | same patch/traversal as X1 | `xqrequant8` where representable |
 
 ## 5. Reproduce the measurements
 
@@ -294,9 +301,24 @@ modified Spike with `-g`, analyzes the PC histograms, and writes:
 ```text
 results/raw/resnet18_<mode>.histogram
 results/raw/resnet18_<mode>.disassembly.txt
+results/raw/resnet18_<mode>.run.json
 results/tables/resnet18_<mode>.csv
 results/tables/resnet18_summary.csv
 ```
+
+Both model runners now share one implementation. To run selected modes:
+
+```sh
+# Specify the custom Spike executable; B0 comparison is N/A unless B0 is selected.
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/run_resnet18_benchmarks_selective.sh b1 x1 x2
+```
+
+The summary contains only the selected modes from that invocation. With
+`SKIP_SPIKE=1`, only build/size/disassembly files named `.build_only.*` are
+published; measured raw pairs and CSVs remain untouched. Fresh results are
+staged and checked for mode isolation before publication. `elf_text` totals
+include setup/checksum/termination as well as inference; `function_self` rows
+exclude called helpers. See [the audit](docs/benchmark_audit.md).
 
 Histogram mode is required for the complete model. An unrestricted `spike -l`
 trace previously grew to approximately 145 GB. The analyzer recognizes custom
@@ -346,29 +368,24 @@ custom-0, match 0x0200000b, mask 0xfe00707f
 
 Full encoding and quantization details are in [`DESIGN.md`](DESIGN.md).
 
-## Design limitations and next optimization
+## Current convolution optimization and limits
 
-The current X1/X2 software packs bytes into registers inside the innermost
-convolution loops and often writes temporary packed data. This explains the
-higher load/store, integer, branch, and total instruction counts.
+B0 is unchanged. New B1 gathers one contiguous input patch per output position,
+reuses it across all output channels, hoists channel correction terms, and
+uses a single accumulator with an eight-element unrolled scalar reduction.
+X1/X2 instantiate the same routine using the existing custom wrappers. X2
+retains the wide scalar requantization fallback.
 
-The recommended software optimization is to change the data layout and loop
-nesting so that eight contiguous activation and weight lanes are already
-available in registers or a reusable packed panel. In order:
+The static scratch capacity is at most 15,360 bytes, including custom packed
+activations; inference must remain sequential and non-reentrant. Weight packing
+is still performed at runtime. All preparation/packing remains inside the
+convolution measurement scope. Shapes beyond the fixed-model scratch bounds
+use B0 as a safe fallback.
 
-1. Prepack weights offline into the exact `xqmac8` lane order.
-2. Reuse packed activation panels across output channels and neighboring
-   output positions.
-3. Hoist address generation and weight-sum correction outside the reduction
-   loop.
-4. Use a specialized fast path for `K % 8 == 0`; isolate tails and wide
-   requantization fallback from the common path.
-5. Measure each change against B0, B1, X1, and X2 with the same histogram
-   protocol.
-
-The current result is therefore an honest ISA evaluation: the extension is
-implemented and verified, while the measurement identifies the software
-mapping—not the instruction semantics—as the dominant remaining bottleneck.
+See the [design and regression analysis](docs/convolution_optimization.md)
+for the evidence and tradeoffs. The updated user-run counts are analyzed in
+[the benchmark audit](docs/benchmark_audit.md); tensor-level validation remains
+a separate gate. No hardware cycle speedup is inferred from instruction counts.
 
 ## Further documentation
 
