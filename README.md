@@ -17,7 +17,7 @@ The midterm deliverables are complete:
 
 1. C/C++ bare-metal workload [`src/benchmarks/resnet18_b0_executor.c`](src/benchmarks/resnet18_b0_executor.c) and kernels [`src/kernels/qgemm.c`](src/kernels/qgemm.c). 
 2. INT8 model [`model/source/resnet18`](model/source/resnet18/model_metadata.json) and Python conversion/export scripts [`scripts/export_litert_model.py`](scripts/export_litert_model.py).
-3. Spike/custom ISA implementation source codes [`src/isa/xqmac8.h`](src/isa/xqmac8.h), [`src/isa/xqrequant8.h`](src/isa/xqrequant8.h).
+3. Spike custom-instruction bodies [`src/isa/xqmac8.h`](src/isa/xqmac8.h), [`src/isa/xqrequant8.h`](src/isa/xqrequant8.h), and the external Spike integration guide [`src/isa/spike_custom_instruction.md`](src/isa/spike_custom_instruction.md).
 4. Verification tests: short tests to test the added instructions [`scripts/test_custom_spike.sh`](scripts/test_custom_spike.sh).
 5. Reproducible synthetic and complete-model benchmark scripts [`scripts/run_resnet18_benchmarks.sh`](scripts/run_resnet18_benchmarks.sh).
 6. Slides presentation [`link`](https://docs.google.com/presentation/d/1YkspZg766Fy4EwkhXZw8v3ISbdjjlEsFkUXAtssOfNY/edit?usp=sharing).
@@ -65,6 +65,7 @@ These are instruction counts, not execution cycles.
 | [`src/kernels/`](src/kernels/) | Scalar kernels, custom wrappers, and host fallbacks |
 | [`src/benchmarks/`](src/benchmarks/) | Bare-metal startup, linker, GEMM, validation, and ResNet executors |
 | [`src/isa/`](src/isa/) | ISA-side instruction source used by the modified Spike checkout |
+| [`src/isa/spike_custom_instruction.md`](src/isa/spike_custom_instruction.md) | Add, register, build, and verify the instructions in an external Spike checkout |
 | [`tests/`](tests/) | Host and bare-metal custom-instruction tests |
 | [`scripts/`](scripts/) | Model conversion, build, validation, and benchmark automation |
 | [`model/source/resnet18/`](model/source/resnet18/) | Frozen LiteRT model and provenance metadata |
@@ -91,8 +92,12 @@ follow the model preparation steps below before building the full workload.
 
 ### Modified Spike
 
-The workload requires a Spike checkout containing the custom instruction
-implementation. The recorded environment uses:
+Keep the Spike source and build **outside this repository**. Follow
+[`src/isa/spike_custom_instruction.md`](src/isa/spike_custom_instruction.md)
+to install the instruction bodies and register their encodings/build entries.
+The guide provides the additions to the four Spike files starting from an
+upstream checkout; no existing local modifications are required. The recorded
+environment uses:
 
 ```text
 source:     ~/src/riscv-isa-sim
@@ -101,18 +106,33 @@ revision:   a80897fc5b7b6c491019b58145338e1678a30366
 executable: ~/src/riscv-isa-sim/build/spike
 ```
 
-Build the simulator in its separate checkout:
+If you already have that custom branch and a configured build directory,
+rebuild it in its separate checkout (replace the example path):
 
 ```sh
-cd ~/src/riscv-isa-sim
+cd "/absolute/path/to/riscv-isa-sim"
 git switch midterm-custom-isa
 make -C build -j2
 ```
 
-The scripts default to that executable. Override it when necessary:
+The branch/revision above records the original local environment; it is not
+supplied by an upstream clone. For a fresh checkout, use the integration guide.
+No Spike binary or build tree is included here.
+
+**Specify your custom Spike path in every command that uses Spike.** The
+scripts have different path interfaces; an unmodified system `spike` will
+not execute these custom instructions:
+
+| Variable | Meaning | Scripts |
+|---|---|---|
+| `SPIKE_BIN` | Absolute path to the custom executable | Full-model validation and benchmark scripts |
+| `SPIKE_DIR` | Absolute path to the external checkout; executable must be `build/spike` beneath it | Custom instruction/GEMM tests and synthetic benchmarks |
+| `SPIKE_SOURCE` | Absolute path to the external source Git checkout, for provenance | Model-freezing script (also requires `SPIKE_BIN`) |
+
+For example, replace the executable path before running:
 
 ```sh
-SPIKE_BIN=/path/to/spike ./scripts/validate_resnet18_b0_spike.sh x2
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resnet18_b0_spike.sh x2
 ```
 
 No `pk` proxy kernel is required. All workloads use the repository startup
@@ -130,7 +150,10 @@ SHA-256: 8fea1acb62829e120b4953b6fbf0f842e0032909254f51c2d989703b66534683
 If the model is not already present, run:
 
 ```sh
-./scripts/freeze_resnet18.sh
+# Specify both the custom Spike executable and its source checkout.
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" \
+SPIKE_SOURCE="/absolute/path/to/riscv-isa-sim" \
+    ./scripts/freeze_resnet18.sh
 ```
 
 The script downloads the model and source README, verifies both SHA-256
@@ -195,7 +218,8 @@ qgemm scalar/custom comparison passed (128 outputs)
 ### Custom Spike instruction test
 
 ```sh
-./scripts/test_custom_spike.sh
+# Specify the custom Spike checkout; this script uses SPIKE_DIR/build/spike.
+SPIKE_DIR="/absolute/path/to/riscv-isa-sim" ./scripts/test_custom_spike.sh
 ```
 
 Expected output:
@@ -211,10 +235,11 @@ The test covers signed packed lanes, negative and large accumulators, modulo
 ### Full ResNet-18 validation
 
 ```sh
-./scripts/validate_resnet18_b0_spike.sh b0
-./scripts/validate_resnet18_b0_spike.sh b1
-./scripts/validate_resnet18_b0_spike.sh x1
-./scripts/validate_resnet18_b0_spike.sh x2
+# Specify the custom Spike executable for each mode.
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resnet18_b0_spike.sh b0
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resnet18_b0_spike.sh b1
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resnet18_b0_spike.sh x1
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resnet18_b0_spike.sh x2
 ```
 
 Expected result for each mode:
@@ -233,6 +258,8 @@ expected byte, and actual byte.
 ## 4. Build a mode
 
 Build one complete bare-metal ELF:
+
+These build-only commands do not invoke Spike and need no Spike path.
 
 ```sh
 ./scripts/build_resnet18_b0.sh b0
@@ -257,7 +284,8 @@ selected with `RESNET18_EXECUTION_MODE`:
 Run the complete-model benchmark:
 
 ```sh
-./scripts/run_resnet18_benchmarks.sh
+# Specify the custom Spike executable.
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/run_resnet18_benchmarks.sh
 ```
 
 The script builds B0/B1/X1/X2, records ELF sizes and disassemblies, runs the
@@ -278,7 +306,8 @@ as raw words.
 For the bounded synthetic GEMM comparison:
 
 ```sh
-./scripts/run_benchmarks.sh
+# Specify the custom Spike checkout; this script uses SPIKE_DIR/build/spike.
+SPIKE_DIR="/absolute/path/to/riscv-isa-sim" ./scripts/run_benchmarks.sh
 ```
 
 This produces `results/tables/summary.csv`. The synthetic benchmark uses
@@ -346,3 +375,4 @@ mapping—not the instruction semantics—as the dominant remaining bottleneck.
 - [`EXPERIMENTS.md`](EXPERIMENTS.md): full methodology, tables, and analysis.
 - [`docs/port_model.md`](docs/port_model.md): detailed model-porting record.
 - [`DESIGN.md`](DESIGN.md): canonical custom ISA specification.
+- [`src/isa/spike_custom_instruction.md`](src/isa/spike_custom_instruction.md): external Spike source additions, build instructions, and verification from an upstream checkout.

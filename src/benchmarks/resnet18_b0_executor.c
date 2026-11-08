@@ -253,60 +253,141 @@ static __attribute__((noinline)) void conv2d_scalar(uint32_t op, const int8_t *i
     }
 }
 
-static __attribute__((noinline)) void conv2d_b1(uint32_t op, const int8_t *input, const int8_t *weights,
-                      const int32_t *bias, int8_t *output,
-                      uint32_t height, uint32_t width, uint32_t input_channels,
-                      uint32_t output_height, uint32_t output_width,
-                      uint32_t output_channels, uint32_t kernel_height,
-                      uint32_t kernel_width, uint32_t stride,
-                      int32_t input_zero_point)
+
+static __attribute__((noinline)) void conv2d_b1(
+    uint32_t op, const int8_t *input, const int8_t *weights,
+    const int32_t *bias, int8_t *output,
+    uint32_t height, uint32_t width, uint32_t input_channels,
+    uint32_t output_height, uint32_t output_width,
+    uint32_t output_channels, uint32_t kernel_height,
+    uint32_t kernel_width, uint32_t stride,
+    int32_t input_zero_point)
 {
-    uint32_t pad_y = (output_height - 1U) * stride + kernel_height > height ?
-        (output_height - 1U) * stride + kernel_height - height : 0;
-    uint32_t pad_x = (output_width - 1U) * stride + kernel_width > width ?
-        (output_width - 1U) * stride + kernel_width - width : 0;
+    const uint32_t BLOCK_SIZE = 8U;
+
+    uint32_t pad_y = 0;
+    uint32_t pad_x = 0;
+
+    if (output_height > 0) {
+        uint32_t required =
+            (output_height - 1U) * stride + kernel_height;
+        if (required > height)
+            pad_y = required - height;
+    }
+
+    if (output_width > 0) {
+        uint32_t required =
+            (output_width - 1U) * stride + kernel_width;
+        if (required > width)
+            pad_x = required - width;
+    }
+
     uint32_t oy;
     uint32_t ox;
     uint32_t oc;
+
     for (oy = 0; oy < output_height; ++oy) {
         for (ox = 0; ox < output_width; ++ox) {
-            int32_t base_y = (int32_t)(oy * stride) - (int32_t)(pad_y / 2U);
-            int32_t base_x = (int32_t)(ox * stride) - (int32_t)(pad_x / 2U);
-            for (oc = 0; oc < output_channels; ++oc) {
-                int64_t accumulator = bias[oc];
+
+            int32_t base_y =
+                (int32_t)(oy * stride) - (int32_t)(pad_y / 2U);
+            int32_t base_x =
+                (int32_t)(ox * stride) - (int32_t)(pad_x / 2U);
+
+            uint32_t output_base =
+                (oy * output_width + ox) * output_channels;
+
+            // Process output channels in blocks of eight.
+            for (oc = 0; oc < output_channels; oc += BLOCK_SIZE) {
+
+                int64_t accumulators[8];
                 int64_t input_sum = 0;
-                uint32_t ky;
-                for (ky = 0; ky < kernel_height; ++ky) {
-                    uint32_t kx;
-                    for (kx = 0; kx < kernel_width; ++kx) {
-                        int32_t iy = base_y + (int32_t)ky;
+
+                uint32_t block_channels = output_channels - oc;
+                uint32_t lane;
+
+                if (block_channels > BLOCK_SIZE)
+                    block_channels = BLOCK_SIZE;
+
+                // Initialize accumulators with bias.
+                for (lane = 0; lane < block_channels; ++lane)
+                    accumulators[lane] = bias[oc + lane];
+
+                // Scalar convolution with activation reuse.
+                for (uint32_t ky = 0; ky < kernel_height; ++ky) {
+                    int32_t iy = base_y + (int32_t)ky;
+
+                    for (uint32_t kx = 0; kx < kernel_width; ++kx) {
                         int32_t ix = base_x + (int32_t)kx;
-                        uint32_t ic;
-                        for (ic = 0; ic < input_channels; ++ic) {
-                            int8_t value = (int8_t)input_zero_point;
-                            if (iy >= 0 && ix >= 0 && (uint32_t)iy < height &&
-                                (uint32_t)ix < width)
-                                value = input[((uint32_t)iy * width +
-                                              (uint32_t)ix) * input_channels + ic];
-                            accumulator += (int64_t)value *
-                                weights[((oc * kernel_height + ky) * kernel_width +
-                                         kx) * input_channels + ic];
-                            input_sum += value;
+
+                        for (uint32_t ic = 0; ic < input_channels; ++ic) {
+
+                            // Load the activation only once.
+                            int32_t input_value = input_zero_point;
+
+                            if (iy >= 0 && ix >= 0 &&
+                                (uint32_t)iy < height &&
+                                (uint32_t)ix < width) {
+
+                                input_value = input[
+                                    ((uint32_t)iy * width +
+                                     (uint32_t)ix) * input_channels + ic
+                                ];
+                            }
+
+                            // The same activation contributes to every
+                            // output channel in this block.
+                            input_sum += input_value;
+
+                            for (lane = 0; lane < block_channels; ++lane) {
+                                uint32_t channel = oc + lane;
+
+                                int32_t weight_value = weights[
+                                    ((channel * kernel_height + ky) *
+                                     kernel_width + kx) * input_channels + ic
+                                ];
+
+                                accumulators[lane] +=
+                                    (int64_t)input_value * weight_value;
+                            }
                         }
                     }
                 }
-                accumulator -= (int64_t)input_zero_point * weight_sum(op, oc);
-                accumulator -= (int64_t)weight_zero_point(op, oc) * input_sum;
-                accumulator += (int64_t)kernel_height * kernel_width *
-                    input_channels * input_zero_point * weight_zero_point(op, oc);
-                output[(oy * output_width + ox) * output_channels + oc] =
-                    requantize_channel(op, oc, accumulator);
-                if (resnet18_operators[op].fused_activation == 1 &&
-                    output[(oy * output_width + ox) * output_channels + oc] <
-                    resnet18_tensors[resnet18_operators[op].outputs[0]].zero_point)
-                    output[(oy * output_width + ox) * output_channels + oc] =
-                        (int8_t)resnet18_tensors[
-                            resnet18_operators[op].outputs[0]].zero_point;
+
+                // Quantization correction and output processing.
+                for (lane = 0; lane < block_channels; ++lane) {
+
+                    uint32_t channel = oc + lane;
+                    int64_t accumulator = accumulators[lane];
+
+                    accumulator -=
+                        (int64_t)input_zero_point *
+                        weight_sum(op, channel);
+
+                    accumulator -=
+                        (int64_t)weight_zero_point(op, channel) *
+                        input_sum;
+
+                    accumulator +=
+                        (int64_t)kernel_height * kernel_width *
+                        input_channels * input_zero_point *
+                        weight_zero_point(op, channel);
+
+                    int8_t result =
+                        requantize_channel(op, channel, accumulator);
+
+                    if (resnet18_operators[op].fused_activation == 1 &&
+                        result < resnet18_tensors[
+                            resnet18_operators[op].outputs[0]
+                        ].zero_point) {
+
+                        result = (int8_t)resnet18_tensors[
+                            resnet18_operators[op].outputs[0]
+                        ].zero_point;
+                    }
+
+                    output[output_base + channel] = result;
+                }
             }
         }
     }
