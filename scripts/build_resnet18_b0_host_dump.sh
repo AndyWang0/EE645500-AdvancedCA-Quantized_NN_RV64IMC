@@ -8,7 +8,7 @@ mkdir -p "$OUT_DIR"
 
 python3 scripts/make_input_header.py \
     model/test_vectors/resnet18/input_0.bin build/resnet18_input.h
-cc -std=c11 -O2 -Wall -Wextra -Werror \
+cc -std=c11 -O3 -Wall -Wextra -Werror \
     -I build -I model/exported/resnet18 \
     src/benchmarks/resnet18_b0_dump_main.c \
     src/benchmarks/resnet18_b0_executor.c \

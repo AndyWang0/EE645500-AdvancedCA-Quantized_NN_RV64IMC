@@ -1,5 +1,5 @@
-#ifndef MODEL_METADATA_H
-#define MODEL_METADATA_H
+#ifndef SYNTHETIC_MODEL_METADATA_H
+#define SYNTHETIC_MODEL_METADATA_H
 
 #include <stdint.h>
 

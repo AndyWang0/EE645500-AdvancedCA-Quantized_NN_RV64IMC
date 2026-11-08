@@ -29,7 +29,7 @@ python3 scripts/make_tensor_reference_header.py \
     build/resnet18_reference_tensors.h
 
 riscv64-unknown-elf-gcc \
-    -std=c11 -march=rv64imc -mabi=lp64 -mcmodel=medany -O2 \
+    -std=c11 -march=rv64imc -mabi=lp64 -mcmodel=medany -O3 \
     -ffreestanding -fno-builtin -Wall -Wextra -Werror \
     -nostdlib -nostartfiles -T src/benchmarks/linker.ld \
     -DRESNET18_EXECUTION_MODE="$MODE" \
