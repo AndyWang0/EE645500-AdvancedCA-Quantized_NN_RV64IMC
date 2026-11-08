@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "../src/benchmarks/baremetal_status.h"
 
 static inline int64_t test_xqmac8(int64_t accumulator,
                                    uint64_t packed_a,
@@ -170,27 +171,11 @@ static int test_xqrequant8_cases(void)
     return 1;
 }
 
-__attribute__((noreturn))
-static void custom_test_pass(void)
-{
-    for (;;) {
-        __asm__ volatile ("nop" ::: "memory");
-    }
-}
-
-__attribute__((noreturn))
-static void custom_test_fail(void)
-{
-    for (;;) {
-        __asm__ volatile ("c.ebreak");
-    }
-}
-
 int main(void)
 {
     if (!test_xqmac8_cases() || !test_xqrequant8_cases()) {
-        custom_test_fail();
+        baremetal_finish(1, "EE645500_FAIL instruction_test\n");
     }
 
-    custom_test_pass();
+    baremetal_finish(0, "EE645500_PASS instruction_test\n");
 }

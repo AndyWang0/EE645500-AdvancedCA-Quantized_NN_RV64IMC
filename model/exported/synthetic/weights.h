@@ -1,5 +1,5 @@
-#ifndef MODEL_WEIGHTS_H
-#define MODEL_WEIGHTS_H
+#ifndef SYNTHETIC_MODEL_WEIGHTS_H
+#define SYNTHETIC_MODEL_WEIGHTS_H
 
 #include <stdint.h>
 

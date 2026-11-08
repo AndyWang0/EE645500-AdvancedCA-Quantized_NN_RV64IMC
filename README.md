@@ -49,13 +49,19 @@ the saved eight-product inner loops retire 38 instructions in B1 versus 36
 in X1. See [the audit](docs/benchmark_audit.md) for the instruction-level
 evidence, accounting scope, and fixes to the benchmark reporting path.
 
-The small synthetic GEMM gives a complementary, bounded measurement:
+The small synthetic GEMM gives a complementary, bounded measurement. These
+fresh results use the exported JSON input and the half-open kernel trace window:
 
 | Mode | Dynamic instructions | Scalar multiply | `xqmac8` | `xqrequant8` |
 |---|---:|---:|---:|---:|
-| B0 | 62,067 | 4,352 | 0 | 0 |
-| X1 | 80,190 | 256 | 512 | 0 |
-| X2 | 74,820 | 0 | 512 | 128 |
+| B0 | 62,003 | 4,352 | 0 | 0 |
+| X1 | 54,053 | 256 | 512 | 0 |
+| X2 | 39,537 | 0 | 512 | 128 |
+
+See the [current synthetic summary](results/tables/synthetic/summary.csv).
+The [legacy tables](results/tables/synthetic/legacy/) used a different runtime
+input and included the end-marker instruction; they are not a like-for-like
+optimization comparison. See [synthetic workflow details](docs/synthetic_workflow.md).
 
 These are instruction counts, not execution cycles.
 
@@ -76,6 +82,9 @@ These are instruction counts, not execution cycles.
 | [`scripts/`](scripts/) | Model conversion, build, validation, and benchmark automation |
 | [`model/source/resnet18/`](model/source/resnet18/) | Frozen LiteRT model and provenance metadata |
 | [`model/exported/resnet18/`](model/exported/resnet18/) | Generated static C graph and tensor data |
+| [`model/source/synthetic/`](model/source/synthetic/) | Small synthetic JSON fixture, not the ResNet model |
+| [`model/exported/synthetic/`](model/exported/synthetic/) | Synthetic weights, quantization, metadata, input, and Python-reference C headers |
+| [`model/test_vectors/synthetic/`](model/test_vectors/synthetic/) | Matching synthetic binary fixtures and metadata |
 | [`results/tables/`](results/tables/) | Machine-readable benchmark summaries |
 
 Generated build files and model artifacts may be ignored in a clean clone;
@@ -126,13 +135,13 @@ supplied by an upstream clone. For a fresh checkout, use the integration guide.
 No Spike binary or build tree is included here.
 
 **Specify your custom Spike path in every command that uses Spike.** The
-scripts have different path interfaces; an unmodified system `spike` will
+scripts accept the interfaces below; an unmodified system `spike` will
 not execute these custom instructions:
 
 | Variable | Meaning | Scripts |
 |---|---|---|
-| `SPIKE_BIN` | Absolute path to the custom executable | Full-model validation and benchmark scripts |
-| `SPIKE_DIR` | Absolute path to the external checkout; executable must be `build/spike` beneath it | Custom instruction/GEMM tests and synthetic benchmarks |
+| `SPIKE_BIN` | Absolute path to the custom executable (preferred) | All validation, custom-test, and benchmark scripts |
+| `SPIKE_DIR` | Compatibility fallback when `SPIKE_BIN` is unset; executable is `build/spike` beneath this external checkout | Custom instruction/GEMM tests and synthetic benchmarks |
 | `SPIKE_SOURCE` | Absolute path to the external source Git checkout, for provenance | Model-freezing script (also requires `SPIKE_BIN`) |
 
 For example, replace the executable path before running:
@@ -224,19 +233,38 @@ qgemm scalar/custom comparison passed (128 outputs)
 ### Custom Spike instruction test
 
 ```sh
-# Specify the custom Spike checkout; this script uses SPIKE_DIR/build/spike.
-SPIKE_DIR="/absolute/path/to/riscv-isa-sim" ./scripts/test_custom_spike.sh
+# Specify the custom Spike executable.
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/test_custom_spike.sh
 ```
 
 Expected output:
 
 ```text
-custom Spike instruction test passed (67 xqmac8, 73 xqrequant8)
+instruction_test passed (67 xqmac8, 73 xqrequant8)
 ```
 
 The test covers signed packed lanes, negative and large accumulators, modulo
 64-bit accumulation, rounding and saturation boundaries, shift values through
 63, random deterministic cases, and `rd = rs1` overlap for `xqrequant8`.
+
+### Synthetic GEMM regression and runner tests
+
+The small fixture is separate from the frozen ResNet model. Regenerate it
+after editing its JSON (defaults point only to the synthetic directories):
+
+```sh
+python3 scripts/export_synthetic_model.py
+# Specify the custom Spike executable; this tests BOTH X1 and X2.
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/test_synthetic_qgemm.sh
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+B0/X1/X2 compare every byte against the exported Python reference. Small
+Spike runners require exit status zero, an exact HTIF pass message, fresh
+trace coverage through the exit marker, and exact custom-instruction counts.
+Crashes, missing markers, instruction-budget exhaustion, and timeouts are not
+success. Runs use a wall-clock bound (`SPIKE_TIMEOUT`, default 30 seconds),
+not an instruction budget; nonzero `SPIKE_INSTRUCTIONS` is rejected.
 
 ### Full ResNet-18 validation
 
@@ -327,12 +355,30 @@ as raw words.
 For the bounded synthetic GEMM comparison:
 
 ```sh
-# Specify the custom Spike checkout; this script uses SPIKE_DIR/build/spike.
-SPIKE_DIR="/absolute/path/to/riscv-isa-sim" ./scripts/run_benchmarks.sh
+# Specify the custom Spike executable.
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/run_synthetic_benchmarks.sh
 ```
 
-This produces `results/tables/summary.csv`. The synthetic benchmark uses
-`M=8`, `N=16`, `K=32` and 4,096 logical MACs.
+This produces [results/tables/synthetic/summary.csv](results/tables/synthetic/summary.csv).
+The synthetic benchmark uses `M=8`, `N=16`, `K=32` and 4,096 logical MACs.
+Its scope is `[benchmark_start, benchmark_end)`, including the kernel call and
+called helpers but excluding correctness checks and HTIF exit. It is **not**
+the full-model `elf_text` scope. All selected modes must pass before results
+are published. A selected-only run does not read an old B0 for comparison:
+
+```sh
+# Specify the custom Spike executable; B0 comparisons are N/A here.
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/run_synthetic_benchmarks.sh --modes x1 x2
+```
+
+Builds are isolated under [build/synthetic/](build/synthetic/), with measured
+traces, disassemblies, logs, and hash manifests under
+[results/raw/synthetic/](results/raw/synthetic/).
+The old [run_benchmarks.sh](scripts/run_benchmarks.sh),
+[test_custom_qgemm.sh](scripts/test_custom_qgemm.sh), and
+[export_model.py](scripts/export_model.py) remain compatibility entry points;
+they use the new synthetic paths. See [the migration notes](docs/synthetic_workflow.md)
+for the renamed sources, output locations, and historical B0 script behavior.
 
 ## ISA summary
 

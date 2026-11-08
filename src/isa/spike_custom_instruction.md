@@ -146,33 +146,36 @@ make -C "$SPIKE_SOURCE/build" -j2
 ```
 
 If generated instruction files are stale after changing the registration or
-build list, reconfigure/rebuild in a new build directory. Note that the legacy
-test/synthetic scripts below expect the directory to be named `build`.
+build list, reconfigure/rebuild in a new build directory. `SPIKE_BIN` can select
+the executable from any build directory; only the `SPIKE_DIR` fallback assumes
+the directory is named `build`.
 
 ## 6. Select the correct binary and verify
 
 Run workload commands from this project's root. Replace the absolute paths in
-every example; these scripts do not all accept the same variable:
+every example; prefer the explicit executable path:
 
 | Variable | Meaning | Used by |
 |---|---|---|
-| `SPIKE_DIR` | External checkout containing `build/spike` | Instruction tests, GEMM tests, synthetic benchmark |
-| `SPIKE_BIN` | Full custom executable path | ResNet validation and full-model benchmarks |
+| `SPIKE_DIR` | Compatibility fallback checkout containing `build/spike`, used only when `SPIKE_BIN` is unset | Instruction tests, GEMM tests, synthetic benchmark |
+| `SPIKE_BIN` | Full custom executable path | All validation, test, and benchmark runners |
 | `SPIKE_SOURCE` | External source Git checkout | Model freezing/provenance, together with `SPIKE_BIN` |
 
 First run the small instruction and GEMM tests:
 
 ```sh
-SPIKE_DIR="/absolute/path/to/riscv-isa-sim" ./scripts/test_custom_spike.sh
-SPIKE_DIR="/absolute/path/to/riscv-isa-sim" ./scripts/test_custom_qgemm.sh
-SPIKE_DIR="/absolute/path/to/riscv-isa-sim" ./scripts/run_benchmarks.sh
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/test_custom_spike.sh
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/test_synthetic_qgemm.sh
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/run_synthetic_benchmarks.sh
 ```
 
 The documented instruction-test result is
-`custom Spike instruction test passed (67 xqmac8, 73 xqrequant8)`.
-These legacy scripts suppress Spike's exit status; inspect their trace and
-diagnostics as well. A matching help/version banner alone does not demonstrate
-that the custom instructions work.
+`instruction_test passed (67 xqmac8, 73 xqrequant8)`.
+The small runners require explicit HTIF success, exit status zero, complete
+trace markers, and exact custom counts. They use a wall-clock timeout instead
+of an instruction budget and publish nothing from a failed invocation. See
+[the synthetic workflow](../../docs/synthetic_workflow.md). A matching
+help/version banner alone does not demonstrate that the instructions work.
 
 After preparing/exporting the model as in [README.md](../../README.md), run:
 

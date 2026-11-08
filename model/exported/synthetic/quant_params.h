@@ -1,7 +1,8 @@
-#ifndef MODEL_QUANT_PARAMS_H
-#define MODEL_QUANT_PARAMS_H
+#ifndef SYNTHETIC_MODEL_QUANT_PARAMS_H
+#define SYNTHETIC_MODEL_QUANT_PARAMS_H
 
 #include <stdint.h>
+#include "weights.h"
 
 static const int32_t model_multiplier[MODEL_N] = { 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1 };
 static const uint8_t model_shift[MODEL_N] = { 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4 };

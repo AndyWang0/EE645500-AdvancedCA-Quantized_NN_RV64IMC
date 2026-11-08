@@ -124,10 +124,16 @@ RTL/CV-Wally evaluation.
 Run the bounded synthetic comparison separately:
 
 ```sh
-./scripts/run_benchmarks.sh
+# Specify the custom Spike executable.
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/run_synthetic_benchmarks.sh
 ```
 
-Its results are stored in `results/tables/summary.csv`. The microbenchmark
+Its current results are stored in
+[results/tables/synthetic/summary.csv](results/tables/synthetic/summary.csv):
+B0 62,003, X1 54,053, X2 39,537 instructions. These were freshly verified after
+the runner hardening; they use the exported JSON input and a half-open kernel
+window. The [legacy results](results/tables/synthetic/legacy/) use a different
+input/window and are retained only as history. The microbenchmark
 isolates packed MAC behavior, while the complete model includes real graph
 shapes, tails, residual operations, and requantization fallback. Do not use
 an unbounded `spike -l` run for the complete model.

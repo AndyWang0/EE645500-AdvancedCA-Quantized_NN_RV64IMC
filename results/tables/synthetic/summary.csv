@@ -1,0 +1,4 @@
+configuration,counting_scope,dynamic_instructions,loads,stores,integer,multiply,branches,custom,xqmac8,xqrequant8,logical_macs,outputs,text_bytes,instructions_per_output,macs_per_instruction,instruction_change_vs_b0
+B0,kernel_window,62003,8742,145,43001,4352,5763,0,0,0,4096,128,3332,484.3984,0.066061,0.0000%
+X1,kernel_window,54053,16942,3754,30282,256,2307,512,512,0,4096,128,3332,422.2891,0.075777,12.8220%
+X2,kernel_window,39537,11332,721,25935,0,909,640,512,128,4096,128,3332,308.8828,0.103599,36.2337%
