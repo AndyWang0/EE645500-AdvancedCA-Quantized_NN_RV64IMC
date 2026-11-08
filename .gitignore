@@ -13,3 +13,5 @@ results/raw/*
 *convolution_optimization.md
 *report_midterm.md
 *benchmark_audit.md
+*.pdf
+*speech.md

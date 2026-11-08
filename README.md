@@ -1,440 +1,225 @@
 # Quantized Neural-Network Acceleration on RV64IMC
 
-This repository implements and evaluates two custom RV64 instructions for
-bare-metal INT8 neural-network inference:
+Bare-metal W8A8 ResNet-18 inference with two custom RV64 instructions:
+`xqmac8` performs eight signed INT8 multiply-accumulates; `xqrequant8`
+performs fixed-point scaling, rounding, zero-point addition, and saturation.
 
-- `xqmac8`: eight signed INT8 products accumulated into a 64-bit register.
-- `xqrequant8`: fixed-point multiplication, ties-away-from-zero rounding,
-  output zero-point addition, and signed INT8 saturation.
+The midterm evaluation covers ISA semantics, functional verification, and
+dynamic instruction counts in modified Spike. CV-Wally RTL, cycle/CPI,
+frequency, area, and PPA measurements are outside this evaluation.
 
-The primary workload is a frozen channelwise-quantized ResNet-18 LiteRT model.
-The project is an ISA-level evaluation using modified Spike; it does not claim
-cycle, CPI, cache, area, frequency, energy, or hardware speedup results.
+## Midterm deliverables
 
-## Midterm status
-
-The midterm implementation and supporting materials are listed below. The user
-has supplied benchmark results for the rewritten B1/X1/X2. A subsequent
-authorized execution passed tensor-level validation and fresh benchmarks for
-all four modes; see the [instruction-count and script audit](docs/benchmark_audit.md).
-
-1. C/C++ bare-metal workload [`src/benchmarks/resnet18_b0_executor.c`](src/benchmarks/resnet18_b0_executor.c) and kernels [`src/kernels/qgemm.c`](src/kernels/qgemm.c). 
-2. INT8 model [`model/source/resnet18`](model/source/resnet18/model_metadata.json) and Python conversion/export scripts [`scripts/export_litert_model.py`](scripts/export_litert_model.py).
-3. Spike custom-instruction bodies [`src/isa/xqmac8.h`](src/isa/xqmac8.h), [`src/isa/xqrequant8.h`](src/isa/xqrequant8.h), and the external Spike integration guide [`src/isa/spike_custom_instruction.md`](src/isa/spike_custom_instruction.md).
-4. Verification tests: short tests to test the added instructions [`scripts/test_custom_spike.sh`](scripts/test_custom_spike.sh).
-5. Reproducible synthetic and complete-model benchmark scripts [`scripts/run_resnet18_benchmarks.sh`](scripts/run_resnet18_benchmarks.sh).
-6. Slides presentation [`link`](https://docs.google.com/presentation/d/1YkspZg766Fy4EwkhXZw8v3ISbdjjlEsFkUXAtssOfNY/edit?usp=sharing).
-7. This README with commands and expected measurements.
-
-The midterm does not include PPA or CV-Wally evaluation. Those are outside the
-requested midterm scope.
-
-## Results at a glance
-
-The complete ResNet-18 graph contains 1,814,073,344 logical MACs. This table
-reflects the updated benchmark snapshot. An authorized fresh run reproduced
-every total/custom count and code size shown here; published artifact hashes
-were checked against the per-mode run manifests.
-
-| Mode | Description | Dynamic instructions | `xqmac8` | `xqrequant8` | MAC/instruction | `.text` bytes |
-|---|---|---:|---:|---:|---:|---:|
-| B0 | Scalar convolution and requantization | 25,847,519,995 | 0 | 0 | 0.070184 | 9,178 |
-| B1 | Software-optimized scalar convolution | 8,987,379,995 | 0 | 0 | 0.201847 | 11,234 |
-| X1 | `xqmac8` plus scalar requantization | 8,609,609,995 | 226,394,112 | 0 | 0.210703 | 11,436 |
-| X2 | `xqmac8` plus `xqrequant8` | 8,504,784,995 | 226,394,112 | 2,384,360 | 0.213300 | 11,526 |
-
-B1 executes neither custom instruction. X1 saves 4.20% against new B1, and X2
-saves another 1.22% against X1. Runtime weight packing keeps the totals close:
-the saved eight-product inner loops retire 38 instructions in B1 versus 36
-in X1. See [the audit](docs/benchmark_audit.md) for the instruction-level
-evidence, accounting scope, and fixes to the benchmark reporting path.
-
-The small synthetic GEMM gives a complementary, bounded measurement. These
-fresh results use the exported JSON input and the half-open kernel trace window:
-
-| Mode | Dynamic instructions | Scalar multiply | `xqmac8` | `xqrequant8` |
-|---|---:|---:|---:|---:|
-| B0 | 62,003 | 4,352 | 0 | 0 |
-| X1 | 54,053 | 256 | 512 | 0 |
-| X2 | 39,537 | 0 | 512 | 128 |
-
-See the [current synthetic summary](results/tables/synthetic/summary.csv).
-The [legacy tables](results/tables/synthetic/legacy/) used a different runtime
-input and included the end-marker instruction; they are not a like-for-like
-optimization comparison. See [synthetic workflow details](docs/synthetic_workflow.md).
-
-These are instruction counts, not execution cycles.
-
-## Repository map
-
-| Path | Purpose |
+| Component | Location |
 |---|---|
-| [`DESIGN.md`](DESIGN.md) | ISA encoding, semantics, quantization contract, and rationale |
-| [`docs/port_model.md`](docs/port_model.md) | Model acquisition, conversion, export, execution, and validation workflow |
-| [`EXPERIMENTS.md`](EXPERIMENTS.md) | Detailed experiment procedure, tables, and bottleneck analysis |
-| [`docs/convolution_optimization.md`](docs/convolution_optimization.md) | Previous B1 regression evidence and the shared-loop rewrite design |
-| [`docs/benchmark_audit.md`](docs/benchmark_audit.md) | Updated user-run counts, mode isolation, packing bottleneck, and benchmark-script corrections |
-| [`src/kernels/`](src/kernels/) | Scalar kernels, custom wrappers, and host fallbacks |
-| [`src/benchmarks/`](src/benchmarks/) | Bare-metal startup, linker, GEMM, validation, and ResNet executors |
-| [`src/isa/`](src/isa/) | ISA-side instruction source used by the modified Spike checkout |
-| [`src/isa/spike_custom_instruction.md`](src/isa/spike_custom_instruction.md) | Add, register, build, and verify the instructions in an external Spike checkout |
-| [`tests/`](tests/) | Host and bare-metal custom-instruction tests |
-| [`scripts/`](scripts/) | Model conversion, build, validation, and benchmark automation |
-| [`model/source/resnet18/`](model/source/resnet18/) | Frozen LiteRT model and provenance metadata |
-| [`model/exported/resnet18/`](model/exported/resnet18/) | Generated static C graph and tensor data |
-| [`model/source/synthetic/`](model/source/synthetic/) | Small synthetic JSON fixture, not the ResNet model |
-| [`model/exported/synthetic/`](model/exported/synthetic/) | Synthetic weights, quantization, metadata, input, and Python-reference C headers |
-| [`model/test_vectors/synthetic/`](model/test_vectors/synthetic/) | Matching synthetic binary fixtures and metadata |
-| [`results/tables/`](results/tables/) | Machine-readable benchmark summaries |
+| Bare-metal workload and kernels | [Executor](src/benchmarks/resnet18_b0_executor.c), [kernels](src/kernels/) |
+| Quantized model and conversion | [Model provenance](model/source/resnet18/model_metadata.json), [exporter](scripts/export_litert_model.py), [model workflow](docs/port_model.md) |
+| Custom ISA and Spike integration | [Design](DESIGN.md), [instruction bodies and integration guide](src/isa/) |
+| Verification tests | [Tests](tests/), [instruction runner](scripts/test_custom_spike.sh) |
+| Reproducible benchmarks | [ResNet-18 runner](scripts/run_resnet18_benchmarks.sh), [synthetic runner](scripts/run_synthetic_benchmarks.sh) |
+| Presentation | [Slides](https://docs.google.com/presentation/d/1YkspZg766Fy4EwkhXZw8v3ISbdjjlEsFkUXAtssOfNY/edit?usp=sharing) |
+| Methodology and measurements | [Experiments](EXPERIMENTS.md) |
+| AI assistance disclosure | [AI usage](AI_USAGE.md) |
 
-Generated build files and model artifacts may be ignored in a clean clone;
-follow the model preparation steps below before building the full workload.
+
+## Results
+
+The frozen graph contains 37 operators and 1,814,073,344 logical MACs.
+All four modes passed tensor-level validation for the deterministic fixture.
+
+| Mode | Convolution | Dynamic instructions | `xqmac8` | `xqrequant8` | MAC/instruction | `.text` bytes |
+|---|---|---:|---:|---:|---:|---:|
+| B0 | Scalar | 25,847,519,995 | 0 | 0 | 0.070184 | 9,178 |
+| B1 | Software-optimized scalar | 8,987,379,995 | 0 | 0 | 0.201847 | 11,234 |
+| X1 | B1 traversal with packed MAC | 8,609,609,995 | 226,394,112 | 0 | 0.210703 | 11,436 |
+| X2 | X1 with custom requantization | 8,504,784,995 | 226,394,112 | 2,384,360 | 0.213300 | 11,526 |
+
+Source: [complete-model summary](results/tables/resnet18_summary.csv).
+Counts cover executed ELF instructions, including setup, checksum, and
+termination; reset-ROM instructions are excluded. B0/B1 execute no custom
+instructions. Incremental reductions are 65.2292% for B0 → B1, 4.2033% for
+B1 → X1, and 1.2175% for X1 → X2. Runtime weight packing limits the ISA gain.
+
+The [synthetic GEMM](results/tables/synthetic/summary.csv) uses M=8, N=16,
+K=32 and retires 62,003 / 54,053 / 39,537 instructions in B0 / X1 / X2.
+Its half-open kernel window differs from the complete-model scope.
+These measurements establish instruction-count reductions, not cycle speedups.
+Operator contributions, bottlenecks, and target assessment are in
+[EXPERIMENTS.md](EXPERIMENTS.md).
 
 ## Requirements
 
-### Host tools
+- Bash, Python 3.10 or compatible, GCC, Git, curl, and sha256sum.
+- RISC-V GCC 10.2.0 or compatible, with `riscv64-unknown-elf-objdump`
+  and `riscv64-unknown-elf-size`.
+- Host LiteRT dependencies from the pinned
+  [requirements](model/source/resnet18/host_requirements.txt).
+- An external custom Spike build implementing both instructions.
 
-- Bash
-- Python 3.10 or newer
-- GCC
-- `curl`, `sha256sum`, `git`
+Keep Spike outside this repository. Follow the
+[integration guide](src/isa/spike_custom_instruction.md) to register the
+encodings, install the instruction bodies, and build the simulator.
+The recorded custom revision is
+`a80897fc5b7b6c491019b58145338e1678a30366`; it is local provenance, not
+an upstream checkout target. 
 
-### RISC-V tools
+Every simulator command below requires the path to the custom executable;
+replace `/absolute/path/to/riscv-isa-sim/build/spike`. An unmodified system
+Spike cannot execute these instructions.
 
-- `riscv64-unknown-elf-gcc` 10.2.0 or compatible
-- `riscv64-unknown-elf-objdump`
-- `riscv64-unknown-elf-size`
+| Variable | Meaning |
+|---|---|
+| `SPIKE_BIN` | Custom executable; used by all Spike runners |
+| `SPIKE_DIR` | Synthetic-runner fallback checkout containing `build/spike`, used only if `SPIKE_BIN` is unset |
+| `SPIKE_SOURCE` | External source checkout for model-freeze provenance |
 
-### Modified Spike
+All commands run from the repository root. Target programs use static storage
+and HTIF (Host-Target Interface) termination without an operating system or `pk`.
 
-Keep the Spike source and build **outside this repository**. Follow
-[`src/isa/spike_custom_instruction.md`](src/isa/spike_custom_instruction.md)
-to install the instruction bodies and register their encodings/build entries.
-The guide provides the additions to the four Spike files starting from an
-upstream checkout; no existing local modifications are required. The recorded
-environment uses:
+## 1. Prepare the model
 
-```text
-source:     ~/src/riscv-isa-sim
-branch:     midterm-custom-isa
-revision:   a80897fc5b7b6c491019b58145338e1678a30366
-executable: ~/src/riscv-isa-sim/build/spike
-```
+Create the host environment:
 
-If you already have that custom branch and a configured build directory,
-rebuild it in its separate checkout (replace the example path):
+~~~sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r model/source/resnet18/host_requirements.txt
+~~~
 
-```sh
-cd "/absolute/path/to/riscv-isa-sim"
-git switch midterm-custom-isa
-make -C build -j2
-```
+Acquire the frozen model and its upstream model card:
 
-The branch/revision above records the original local environment; it is not
-supplied by an upstream clone. For a fresh checkout, use the integration guide.
-No Spike binary or build tree is included here.
-
-**Specify your custom Spike path in every command that uses Spike.** The
-scripts accept the interfaces below; an unmodified system `spike` will
-not execute these custom instructions:
-
-| Variable | Meaning | Scripts |
-|---|---|---|
-| `SPIKE_BIN` | Absolute path to the custom executable (preferred) | All validation, custom-test, and benchmark scripts |
-| `SPIKE_DIR` | Compatibility fallback when `SPIKE_BIN` is unset; executable is `build/spike` beneath this external checkout | Custom instruction/GEMM tests and synthetic benchmarks |
-| `SPIKE_SOURCE` | Absolute path to the external source Git checkout, for provenance | Model-freezing script (also requires `SPIKE_BIN`) |
-
-For example, replace the executable path before running:
-
-```sh
-SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resnet18_b0_spike.sh x2
-```
-
-No `pk` proxy kernel is required. All workloads use the repository startup
-code, linker script, static memory, and `tohost` termination.
-
-## 1. Prepare and freeze the model
-
-The selected model is `litert-community/resnet18`:
-
-```text
-resnet18_int8_channelwise.tflite
-SHA-256: 8fea1acb62829e120b4953b6fbf0f842e0032909254f51c2d989703b66534683
-```
-
-If the model is not already present, run:
-
-```sh
-# Specify both the custom Spike executable and its source checkout.
+~~~sh
+# Specify the custom Spike executable and source checkout.
 SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" \
-SPIKE_SOURCE="/absolute/path/to/riscv-isa-sim" \
-    ./scripts/freeze_resnet18.sh
-```
+SPIKE_SOURCE="/absolute/path/to/riscv-isa-sim" ./scripts/freeze_resnet18.sh
+~~~
 
-The script downloads the model and source README, verifies both SHA-256
-hashes, and records tool/model provenance in
-[`model/source/resnet18/model_metadata.json`](model/source/resnet18/model_metadata.json).
+The selected model is `litert-community/resnet18/resnet18_int8_channelwise.tflite`,
+with SHA-256:
 
-Inspect the graph:
+~~~text
+8fea1acb62829e120b4953b6fbf0f842e0032909254f51c2d989703b66534683
+~~~
 
-```sh
-python3 scripts/inspect_litert_model.py \
+The freeze script verifies both downloads and records provenance in
+[model_metadata.json](model/source/resnet18/model_metadata.json).
+The large model and generated ResNet headers are ignored by Git.
+
+Inspect, generate the host reference, and export static C data:
+
+~~~sh
+PYTHONPATH="$PWD" .venv/bin/python scripts/inspect_litert_model.py \
     --model model/source/resnet18/resnet18_int8_channelwise.tflite \
-    --json model/source/resnet18/graph_report.json
-```
+    --json model/source/resnet18/graph_report.json \
+    --summary model/source/resnet18/graph_summary.txt
 
-The model is signed INT8 W8A8 with channelwise INT8 weights and asymmetric
-INT8 activations. It contains 20 convolutions, one max pool, eight residual
-adds, one average pool, and one fully connected layer.
-
-## 2. Validate and export static model data
-
-Run the host LiteRT reference to produce the deterministic input, final output,
-and intermediate tensor snapshots:
-
-```sh
-python3 scripts/validate_litert_model.py \
+PYTHONPATH="$PWD" .venv/bin/python scripts/validate_litert_model.py \
     --model model/source/resnet18/resnet18_int8_channelwise.tflite \
     --out-dir model/test_vectors/resnet18 \
-    --debug-dir model/test_vectors/resnet18/intermediate
-```
+    --debug-dir model/test_vectors/host_validation/intermediate
 
-Export the graph and constant tensors as C:
-
-```sh
-python3 scripts/export_litert_model.py \
+PYTHONPATH="$PWD" .venv/bin/python scripts/export_litert_model.py \
     --model model/source/resnet18/resnet18_int8_channelwise.tflite \
     --out-dir model/exported/resnet18 \
     --test-dir model/test_vectors/resnet18
-```
+~~~
 
-The export preserves tensor shapes, quantization parameters, weights, bias,
-weight sums, operator metadata, and the static graph. The executor consumes
-these generated artifacts without a runtime or dynamic allocation.
+The deterministic input seed is `20261104`. The
+[model workflow](docs/port_model.md) describes layouts, quantization, generated
+artifacts, and numerical limitations.
 
-## 3. Run correctness tests
+## 2. Verify correctness
 
-### Host scalar regression
+Host kernel and runner regressions:
 
-```sh
+~~~sh
 mkdir -p build
 gcc -std=c11 -Wall -Wextra -Werror -O3 \
-    tests/test_qgemm.c src/kernels/qgemm.c \
-    -o build/test_qgemm
+    tests/test_qgemm.c src/kernels/qgemm.c -o build/test_qgemm
 ./build/test_qgemm
-```
-
-Expected output:
-
-```text
-qgemm scalar/custom comparison passed (128 outputs)
-```
-
-### Custom Spike instruction test
-
-```sh
-# Specify the custom Spike executable.
-SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/test_custom_spike.sh
-```
-
-Expected output:
-
-```text
-instruction_test passed (67 xqmac8, 73 xqrequant8)
-```
-
-The test covers signed packed lanes, negative and large accumulators, modulo
-64-bit accumulation, rounding and saturation boundaries, shift values through
-63, random deterministic cases, and `rd = rs1` overlap for `xqrequant8`.
-
-### Synthetic GEMM regression and runner tests
-
-The small fixture is separate from the frozen ResNet model. Regenerate it
-after editing its JSON (defaults point only to the synthetic directories):
-
-```sh
-python3 scripts/export_synthetic_model.py
-# Specify the custom Spike executable; this tests BOTH X1 and X2.
-SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/test_synthetic_qgemm.sh
 python3 -m unittest discover -s tests -p 'test_*.py' -v
-```
+~~~
 
-B0/X1/X2 compare every byte against the exported Python reference. Small
-Spike runners require exit status zero, an exact HTIF pass message, fresh
-trace coverage through the exit marker, and exact custom-instruction counts.
-Crashes, missing markers, instruction-budget exhaustion, and timeouts are not
-success. Runs use a wall-clock bound (`SPIKE_TIMEOUT`, default 30 seconds),
-not an instruction budget; nonzero `SPIKE_INSTRUCTIONS` is rejected.
+Expected host result:
+`qgemm scalar/custom comparison passed (128 outputs)`.
+The Python regression suite contains 19 tests.
 
-### Full ResNet-18 validation
+Instruction and synthetic GEMM tests:
 
-```sh
+~~~sh
+python3 scripts/export_synthetic_model.py
+# Specify the custom Spike executable in each invocation.
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/test_custom_spike.sh
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/test_synthetic_qgemm.sh
+~~~
+
+Expected custom counts are 67 MAC / 73 requant operations for the instruction
+test, 512 / 0 for synthetic X1, and 512 / 128 for synthetic X2.
+See the [synthetic workflow](docs/synthetic_workflow.md) for completion checks.
+
+Full-model validation:
+
+~~~sh
 # Specify the custom Spike executable for each mode.
 SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resnet18_b0_spike.sh b0
 SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resnet18_b0_spike.sh b1
 SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resnet18_b0_spike.sh x1
 SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resnet18_b0_spike.sh x2
-```
+~~~
 
-Expected result for each mode (all four passed in the authorized fresh run):
+Each mode should report `Spike <MODE> validation passed`. Validation compares
+available nonconstant tensors and reports the first tensor mismatch, element
+index, and expected/actual bytes. Keep `SPIKE_INSTRUCTIONS=0` for complete
+validation; instruction-budget exhaustion is not proof of completion.
 
-```text
-Spike B0 validation passed
-Spike B1 validation passed
-Spike X1 validation passed
-Spike X2 validation passed
-```
+## 3. Build and benchmark
 
-The validator compares available intermediate tensors, not only the final
-output. A failure reports the tensor ID, mismatch count, first mismatch index,
-expected byte, and actual byte.
+Build-only commands do not invoke Spike:
 
-## 4. Build a mode
-
-Build one complete bare-metal ELF:
-
-These build-only commands do not invoke Spike and need no Spike path.
-
-```sh
+~~~sh
 ./scripts/build_resnet18_b0.sh b0
 ./scripts/build_resnet18_b0.sh b1
 ./scripts/build_resnet18_b0.sh x1
 ./scripts/build_resnet18_b0.sh x2
-```
+~~~
 
-The build uses `-march=rv64imc`, `-mabi=lp64`, freestanding compilation,
-`-nostdlib`, `-nostartfiles`, and the project linker script. The mode is
-selected with `RESNET18_EXECUTION_MODE`:
+The target flags include `-march=rv64imc -mabi=lp64 -O3 -ffreestanding`,
+`-nostdlib`, and `-nostartfiles`. The mode selector
+`RESNET18_EXECUTION_MODE=0/1/2/3` corresponds to B0/B1/X1/X2.
 
-| Value | Mode | Convolution | Requantization |
-|---:|---|---|---|
-| 0 | B0 | scalar | scalar |
-| 1 | B1 | reusable input patch, unrolled scalar dot product | scalar |
-| 2 | X1 | same patch/traversal as B1, `xqmac8` dot product | scalar |
-| 3 | X2 | same patch/traversal as X1 | `xqrequant8` where representable |
+Run complete-model or selected-mode measurements:
 
-## 5. Reproduce the measurements
-
-Run the complete-model benchmark:
-
-```sh
+~~~sh
 # Specify the custom Spike executable.
 SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/run_resnet18_benchmarks.sh
-```
+SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/run_resnet18_benchmarks_selective.sh b1 x1 x2
+~~~
 
-The script builds B0/B1/X1/X2, records ELF sizes and disassemblies, runs the
-modified Spike with `-g`, analyzes the PC histograms, and writes:
+The runner uses PC histograms (`-g`), not full instruction traces. It stages
+all selected modes, checks completion, coverage, and mode isolation, and
+publishes:
 
-```text
-results/raw/resnet18_<mode>.histogram
-results/raw/resnet18_<mode>.disassembly.txt
-results/raw/resnet18_<mode>.run.json
+~~~text
+results/raw/resnet18_<mode>.{histogram,disassembly.txt,run.json}
 results/tables/resnet18_<mode>.csv
 results/tables/resnet18_summary.csv
-```
+~~~
 
-Both model runners now share one implementation. To run selected modes:
+Summaries contain only selected modes; B0 comparison is `N/A` if B0 is
+unselected. `SKIP_SPIKE=1` produces only `.build_only.*` reports and leaves
+measured artifacts unchanged. Correctness validation is a separate gate.
 
-```sh
-# Specify the custom Spike executable; B0 comparison is N/A unless B0 is selected.
-SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/run_resnet18_benchmarks_selective.sh b1 x1 x2
-```
+For the small synthetic benchmark:
 
-The summary contains only the selected modes from that invocation. With
-`SKIP_SPIKE=1`, only build/size/disassembly files named `.build_only.*` are
-published; measured raw pairs and CSVs remain untouched. Fresh results are
-staged and checked for mode isolation before publication. `elf_text` totals
-include setup/checksum/termination as well as inference; `function_self` rows
-exclude called helpers. See [the audit](docs/benchmark_audit.md).
-
-Histogram mode is required for the complete model. An unrestricted `spike -l`
-trace previously grew to approximately 145 GB. The analyzer recognizes custom
-instruction encodings even when the unmodified GNU disassembler prints them
-as raw words.
-
-For the bounded synthetic GEMM comparison:
-
-```sh
+~~~sh
 # Specify the custom Spike executable.
 SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/run_synthetic_benchmarks.sh
-```
+~~~
 
-This produces [results/tables/synthetic/summary.csv](results/tables/synthetic/summary.csv).
-The synthetic benchmark uses `M=8`, `N=16`, `K=32` and 4,096 logical MACs.
-Its scope is `[benchmark_start, benchmark_end)`, including the kernel call and
-called helpers but excluding correctness checks and HTIF exit. It is **not**
-the full-model `elf_text` scope. All selected modes must pass before results
-are published. A selected-only run does not read an old B0 for comparison:
+Outputs are isolated under [results/tables/synthetic/](results/tables/synthetic/)
+and [results/raw/synthetic/](results/raw/synthetic/). Source and binary
+fixtures reside in model-specific `synthetic/` directories.
+Compatibility entry points and output locations are documented in the
+[synthetic workflow](docs/synthetic_workflow.md).
 
-```sh
-# Specify the custom Spike executable; B0 comparisons are N/A here.
-SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/run_synthetic_benchmarks.sh --modes x1 x2
-```
-
-Builds are isolated under [build/synthetic/](build/synthetic/), with measured
-traces, disassemblies, logs, and hash manifests under
-[results/raw/synthetic/](results/raw/synthetic/).
-The old [run_benchmarks.sh](scripts/run_benchmarks.sh),
-[test_custom_qgemm.sh](scripts/test_custom_qgemm.sh), and
-[export_model.py](scripts/export_model.py) remain compatibility entry points;
-they use the new synthetic paths. See [the migration notes](docs/synthetic_workflow.md)
-for the renamed sources, output locations, and historical B0 script behavior.
-
-## ISA summary
-
-### `xqmac8`
-
-```asm
-xqmac8 rd, rs1, rs2
-```
-
-`rs1` and `rs2` contain eight signed INT8 lanes in bits `[8*i+7:8*i]`.
-The instruction computes the eight products, adds them to the old `rd`, and
-writes the result modulo 2^64. Encoding:
-
-```text
-custom-0, match 0x0000000b, mask 0xfe00707f
-```
-
-### `xqrequant8`
-
-```asm
-xqrequant8 rd, rs1, rs2
-```
-
-`rs1` is a signed 64-bit accumulator. `rs2` packs a signed 32-bit multiplier
-in bits `[31:0]`, a shift `S` in `[37:32]`, and an INT8 output zero point in
-`[45:38]`. The instruction performs signed fixed-point scaling with
-ties-away-from-zero rounding and saturates to `[-128, 127]`. Encoding:
-
-```text
-custom-0, match 0x0200000b, mask 0xfe00707f
-```
-
-Full encoding and quantization details are in [`DESIGN.md`](DESIGN.md).
-
-## Current convolution optimization and limits
-
-B0 is unchanged. New B1 gathers one contiguous input patch per output position,
-reuses it across all output channels, hoists channel correction terms, and
-uses a single accumulator with an eight-element unrolled scalar reduction.
-X1/X2 instantiate the same routine using the existing custom wrappers. X2
-retains the wide scalar requantization fallback.
-
-The static scratch capacity is at most 15,360 bytes, including custom packed
-activations; inference must remain sequential and non-reentrant. Weight packing
-is still performed at runtime. All preparation/packing remains inside the
-convolution measurement scope. Shapes beyond the fixed-model scratch bounds
-use B0 as a safe fallback.
-
-See the [design and regression analysis](docs/convolution_optimization.md)
-for the evidence and tradeoffs. The updated user-run counts are analyzed in
-[the benchmark audit](docs/benchmark_audit.md), including successful fresh
-tensor-level validation. No hardware cycle speedup is inferred from instruction counts.
-
-## Further documentation
-
-- [`EXPERIMENTS.md`](EXPERIMENTS.md): full methodology, tables, and analysis.
-- [`docs/port_model.md`](docs/port_model.md): detailed model-porting record.
-- [`DESIGN.md`](DESIGN.md): canonical custom ISA specification.
-- [`src/isa/spike_custom_instruction.md`](src/isa/spike_custom_instruction.md): external Spike source additions, build instructions, and verification from an upstream checkout.
+New raw artifacts are ignored by Git. Required evidence must be included in
+the submission or distributed through an accessible archive.
