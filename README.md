@@ -14,9 +14,9 @@ cycle, CPI, cache, area, frequency, energy, or hardware speedup results.
 ## Midterm status
 
 The midterm implementation and supporting materials are listed below. The user
-has supplied benchmark results for the rewritten B1/X1/X2; see the
-[instruction-count and script audit](docs/benchmark_audit.md). Benchmark
-completion is separate from tensor-level functional validation.
+has supplied benchmark results for the rewritten B1/X1/X2. A subsequent
+authorized execution passed tensor-level validation and fresh benchmarks for
+all four modes; see the [instruction-count and script audit](docs/benchmark_audit.md).
 
 1. C/C++ bare-metal workload [`src/benchmarks/resnet18_b0_executor.c`](src/benchmarks/resnet18_b0_executor.c) and kernels [`src/kernels/qgemm.c`](src/kernels/qgemm.c). 
 2. INT8 model [`model/source/resnet18`](model/source/resnet18/model_metadata.json) and Python conversion/export scripts [`scripts/export_litert_model.py`](scripts/export_litert_model.py).
@@ -32,9 +32,9 @@ requested midterm scope.
 ## Results at a glance
 
 The complete ResNet-18 graph contains 1,814,073,344 logical MACs. This table
-reflects the updated user-run benchmark snapshot. Its total and custom counts
-were checked against the saved histograms, disassemblies, and existing ELFs;
-no new simulation was run during the audit.
+reflects the updated benchmark snapshot. An authorized fresh run reproduced
+every total/custom count and code size shown here; published artifact hashes
+were checked against the per-mode run manifests.
 
 | Mode | Description | Dynamic instructions | `xqmac8` | `xqrequant8` | MAC/instruction | `.text` bytes |
 |---|---|---:|---:|---:|---:|---:|
@@ -248,8 +248,7 @@ SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resne
 SPIKE_BIN="/absolute/path/to/riscv-isa-sim/build/spike" ./scripts/validate_resnet18_b0_spike.sh x2
 ```
 
-Required result for each mode after you validate this revision (not rerun as
-part of the convolution rewrite):
+Expected result for each mode (all four passed in the authorized fresh run):
 
 ```text
 Spike B0 validation passed
@@ -384,8 +383,8 @@ use B0 as a safe fallback.
 
 See the [design and regression analysis](docs/convolution_optimization.md)
 for the evidence and tradeoffs. The updated user-run counts are analyzed in
-[the benchmark audit](docs/benchmark_audit.md); tensor-level validation remains
-a separate gate. No hardware cycle speedup is inferred from instruction counts.
+[the benchmark audit](docs/benchmark_audit.md), including successful fresh
+tensor-level validation. No hardware cycle speedup is inferred from instruction counts.
 
 ## Further documentation
 

@@ -1,5 +1,5 @@
 
-build/resnet18_x2.elf:     file format elf64-littleriscv
+/home/andy/EE645500-AdvancedCA-Quantized_NN_RV64IMC/build/resnet18_x2.elf:     file format elf64-littleriscv
 
 
 Disassembly of section .text:

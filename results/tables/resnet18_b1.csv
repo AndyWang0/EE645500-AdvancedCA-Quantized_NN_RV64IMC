@@ -1,5 +1,5 @@
-region,dynamic_instructions,loads,stores,integer,multiply,branches,custom,xqmac8,xqrequant8,logical_macs,outputs,text_bytes
-complete_model,8987379995,3660116121,8983515,3202946607,1821459845,293873907,0,0,0,1814073344,1000,
-convolution_kernel,0,0,0,0,0,0,0,0,0,1814073344,1000,
-b1_convolution_kernel,8725276617,3644032198,6340948,3005771189,1814471106,254661176,0,0,0,1814073344,1000,
-fully_connected_kernel,5156055,1030014,1016,3095024,513000,517001,0,0,0,1814073344,1000,
+region,counting_scope,dynamic_instructions,loads,stores,integer,multiply,branches,custom,xqmac8,xqrequant8,logical_macs,outputs,text_bytes
+complete_model,elf_text,8987379995,3660116121,8983515,3189761316,1821459845,307059198,0,0,0,1814073344,1000,
+convolution_kernel,function_self,0,0,0,0,0,0,0,0,0,0,0,
+b1_convolution_kernel,function_self,8725276617,3644032198,6340948,3005147713,1814471106,255284652,0,0,0,1813561344,2483712,
+fully_connected_kernel,function_self,5156055,1030014,1016,3093023,513000,519002,0,0,0,512000,1000,
